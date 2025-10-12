@@ -47,20 +47,25 @@ export default function Sidebar({ isOpen, onClose }) {
       ? chwLinks
       : adminLinks;
 
+  // Adjust this if your navbar height is different
+  const NAVBAR_HEIGHT = 75; // px
+
   return (
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed left-0 right-0 bg-black bg-opacity-50 z-30 lg:hidden"
           onClick={onClose}
           aria-hidden="true"
+          style={{ top: `${NAVBAR_HEIGHT}px`, height: `calc(100vh - ${NAVBAR_HEIGHT}px)` }}
         />
       )}
 
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen bg-surface-light dark:bg-surface-dark border-r border-gray-200 dark:border-gray-700 transition-transform duration-300 ${
+        className={`fixed left-0 bg-surface-light dark:bg-surface-dark border-r border-gray-200 dark:border-gray-700 transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } w-64 flex flex-col`}
+        } w-64 flex flex-col z-30`}
+        style={{ top: `${NAVBAR_HEIGHT}px`, height: `calc(100vh - ${NAVBAR_HEIGHT}px)` }}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 lg:hidden">
           <h2 className="text-lg font-semibold">Menu</h2>

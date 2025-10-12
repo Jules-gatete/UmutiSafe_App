@@ -284,7 +284,7 @@ export let currentUser = mockUsers[0];
 
 export const authState = {
   isAuthenticated: true,
-  currentRole: 'user',
+  currentRole: 'admin',
 };
 
 export const setCurrentUser = (userId) => {

@@ -32,7 +32,7 @@ function App() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto lg:ml-64">
             <AppRoutes />
           </main>
         </div>
