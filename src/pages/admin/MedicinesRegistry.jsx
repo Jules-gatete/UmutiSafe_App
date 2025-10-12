@@ -1,17 +1,23 @@
-import React, { useState } from 'react';
-import { Upload, Database, Search } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Upload, Database } from 'lucide-react';
 import Table from '../../components/Table';
+import SearchBar from '../../components/SearchBar';
 import { mockMedicines } from '../../utils/mockData';
 
 export default function MedicinesRegistry() {
   const [searchQuery, setSearchQuery] = useState('');
   const [csvFile, setCsvFile] = useState(null);
 
-  const filteredMedicines = mockMedicines.filter(
-    med =>
-      med.genericName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      med.brandName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredMedicines = useMemo(() => {
+    if (!searchQuery) return mockMedicines;
+    const q = searchQuery.toLowerCase();
+    return mockMedicines.filter(
+      med =>
+        (med.genericName || '').toLowerCase().includes(q) ||
+        (med.brandName || '').toLowerCase().includes(q) ||
+        (med.manufacturer || '').toLowerCase().includes(q)
+    );
+  }, [mockMedicines, searchQuery]);
 
   const columns = [
     { key: 'genericName', label: 'Generic Name', sortable: true },

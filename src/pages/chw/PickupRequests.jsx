@@ -1,22 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { MapPin, Calendar, Eye } from 'lucide-react';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import Select from '../../components/FormFields/Select';
 import Textarea from '../../components/FormFields/Textarea';
+import SearchBar from '../../components/SearchBar';
 import { mockPickupRequests, currentUser, updatePickupRequestStatus } from '../../utils/mockData';
 
 export default function PickupRequests() {
+  const chwRequests = mockPickupRequests.filter(r => r.chwId === currentUser.id);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [reviewStatus, setReviewStatus] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [query, setQuery] = useState('');
 
-  const chwRequests = mockPickupRequests.filter(r => r.chwId === currentUser.id);
-  const filteredRequests =
-    filterStatus === 'all'
-      ? chwRequests
-      : chwRequests.filter(r => r.status === filterStatus);
+  const filteredRequests = useMemo(() => {
+    let filtered = chwRequests;
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(r => r.status === filterStatus);
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      filtered = filtered.filter(
+        r =>
+          (r.userName || '').toLowerCase().includes(q) ||
+          (r.medicineName || '').toLowerCase().includes(q) ||
+          (r.pickupLocation || '').toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [chwRequests, filterStatus, query]);
 
   const statusOptions = [
     { value: 'scheduled', label: 'Schedule Pickup' },
@@ -114,6 +129,10 @@ export default function PickupRequests() {
             <option value="collected">Collected</option>
             <option value="completed">Completed</option>
           </select>
+
+          <div className="mb-4 max-w-xl w-full">
+            <SearchBar onSearch={(q) => setQuery(q)} placeholder="Search requests by name, medicine or location..." />
+          </div>
         </div>
 
         <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 rounded-lg p-4 mb-4">
