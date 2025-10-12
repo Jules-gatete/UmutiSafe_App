@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, Bell, ChevronDown, User } from 'lucide-react';
-import SearchBar from './SearchBar';
 import DarkModeToggle from './DarkModeToggle';
 import { currentUser, authState, switchRole } from '../utils/mockData';
 import logoSvg from '../assets/logo.svg';
@@ -14,10 +13,6 @@ export default function Navbar({ onMenuClick }) {
     switchRole(role);
     setShowRoleDropdown(false);
     window.location.href = `/${role}`;
-  };
-
-  const handleSearch = (query) => {
-    console.log('Search query:', query);
   };
 
   const roleLabels = {
@@ -52,7 +47,7 @@ export default function Navbar({ onMenuClick }) {
             </Link>
 
             <div className="hidden md:flex flex-1 max-w-lg">
-              <SearchBar onSearch={handleSearch} />
+              {/* Search moved to per-page locations */}
             </div>
           </div>
 
@@ -140,7 +135,7 @@ export default function Navbar({ onMenuClick }) {
         </div>
 
         <div className="md:hidden mt-3">
-          <SearchBar onSearch={handleSearch} />
+          {/* Mobile search moved to per-page locations */}
         </div>
       </div>
     </nav>

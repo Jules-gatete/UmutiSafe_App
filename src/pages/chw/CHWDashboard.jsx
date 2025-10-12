@@ -1,11 +1,19 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, Clock, CheckCircle, Truck, MapPin } from 'lucide-react';
 import StatCard from '../../components/StatCard';
+import SearchBar from '../../components/SearchBar';
 import { mockPickupRequests, currentUser } from '../../utils/mockData';
 
 export default function CHWDashboard() {
   const chwRequests = mockPickupRequests.filter(r => r.chwId === currentUser.id);
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    if (!query) return chwRequests;
+    const q = query.toLowerCase();
+    return chwRequests.filter(r => (r.patientName || '').toLowerCase().includes(q) || (r.address || '').toLowerCase().includes(q));
+  }, [chwRequests, query]);
+
   const pendingRequests = chwRequests.filter(r => r.status === 'pending');
   const scheduledRequests = chwRequests.filter(r => r.status === 'scheduled');
   const completedRequests = chwRequests.filter(r => r.status === 'completed');
@@ -42,6 +50,10 @@ export default function CHWDashboard() {
           value={completedRequests.length}
           color="green"
         />
+      </div>
+
+      <div className="mb-8 max-w-xl">
+        <SearchBar onSearch={(q) => setQuery(q)} placeholder="Search pickups by name or address..." />
       </div>
 
       <div className="card">
@@ -109,6 +121,21 @@ export default function CHWDashboard() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* render filtered requests */}
+      <div>
+        {filtered.map(r => (
+          <div key={r.id} className="card mb-3">
+            <div className="flex justify-between">
+              <div>
+                <div className="font-semibold">{r.patientName}</div>
+                <div className="text-sm text-gray-600">{r.address}</div>
+              </div>
+              <div className="text-sm">{r.status}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

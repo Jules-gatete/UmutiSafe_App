@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Upload, Loader } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
 import Select from '../../components/FormFields/Select';
-import { predictFromText, predictFromImage, searchMedicines } from '../../utils/apiMocks';
+import { predictFromText, predictFromImage } from '../../utils/apiMocks';
 import { addDisposal } from '../../utils/mockData';
+import SearchBar from '../../components/SearchBar';
 
 export default function AddDisposal() {
   const navigate = useNavigate();
@@ -163,8 +164,18 @@ export default function AddDisposal() {
     });
   };
 
+  const handlePageSearch = async (q) => {
+    const res = await searchMedicines(q);
+    if (res.success) setSuggestions(res.data);
+  };
+
   return (
-    <div className="p-4 lg:p-8 pb-24 lg:pb-8 max-w-4xl mx-auto">
+    <div className="p-4 lg:p-8 pb-24 lg:pb-8 max-w-5xl mx-auto">
+      <div className="mb-6">
+        {/* page-specific search */}
+        <SearchBar onSearch={handlePageSearch} placeholder="Search medicines for this form..." />
+      </div>
+
       <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
         Add New Disposal
       </h1>
@@ -172,121 +183,132 @@ export default function AddDisposal() {
         Enter medicine details to get proper disposal guidance
       </p>
 
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">Option 1: Upload Image</h2>
-        <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
-          {imagePreview ? (
-            <div className="mb-4">
-              <img
-                src={imagePreview}
-                alt="Medicine preview"
-                className="max-h-64 mx-auto rounded-lg"
+      {/* Make the upload card and manual form parallel on md+ screens */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card">
+          <h2 className="text-xl font-bold mb-4">Option 1: Upload Image</h2>
+          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+            {imagePreview ? (
+              <div className="mb-4">
+                <img
+                  src={imagePreview}
+                  alt="Medicine preview"
+                  className="max-h-44 w-auto mx-auto rounded-lg object-contain"
+                />
+              </div>
+            ) : (
+              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            )}
+            <label className="btn-outline cursor-pointer inline-block">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="hidden"
+              />
+              {imagePreview ? 'Change Image' : 'Upload Image'}
+            </label>
+            {imageFile && (
+              <button
+                onClick={handlePredictFromImage}
+                disabled={loading}
+                className="btn-primary ml-4"
+              >
+                {loading ? (
+                  <Loader className="w-5 h-5 animate-spin inline" />
+                ) : (
+                  'Scan Image'
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Manual entry form - inputs arranged in two columns */}
+        <form onSubmit={handlePredictFromText} className="card">
+          <h2 className="text-xl font-bold mb-4">Option 2: Enter Details Manually</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative">
+              <Input
+                label="Generic Medicine Name"
+                id="generic_name"
+                name="generic_name"
+                value={formData.generic_name}
+                onChange={handleInputChange}
+                placeholder="e.g., Paracetamol"
+                required
+                autoComplete="off"
+              />
+              {suggestions.length > 0 && (
+                <div className="absolute z-10 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+                  {suggestions.map((med) => (
+                    <button
+                      key={med.id}
+                      type="button"
+                      onClick={() => handleSuggestionClick(med)}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <div className="font-medium">{med.genericName}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {med.brandName} • {med.dosageForm}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Input
+                label="Brand Name (Optional)"
+                id="brand_name"
+                name="brand_name"
+                value={formData.brand_name}
+                onChange={handleInputChange}
+                placeholder="e.g., Panadol"
               />
             </div>
-          ) : (
-            <Upload className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          )}
-          <label className="btn-outline cursor-pointer inline-block">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="hidden"
-            />
-            {imagePreview ? 'Change Image' : 'Upload Image'}
-          </label>
-          {imageFile && (
-            <button
-              onClick={handlePredictFromImage}
-              disabled={loading}
-              className="btn-primary ml-4"
-            >
+
+            <div>
+              <Select
+                label="Dosage Form"
+                id="dosage_form"
+                name="dosage_form"
+                value={formData.dosage_form}
+                onChange={handleInputChange}
+                options={dosageForms}
+              />
+            </div>
+
+            <div>
+              <Select
+                label="Packaging Type"
+                id="packaging_type"
+                name="packaging_type"
+                value={formData.packaging_type}
+                onChange={handleInputChange}
+                options={packagingTypes}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <button type="submit" disabled={loading} className="btn-primary w-full">
               {loading ? (
-                <Loader className="w-5 h-5 animate-spin inline" />
+                <>
+                  <Loader className="w-5 h-5 animate-spin inline mr-2" />
+                  Analyzing...
+                </>
               ) : (
-                'Scan Image'
+                'Get Disposal Guidance'
               )}
             </button>
-          )}
-        </div>
+          </div>
+        </form>
       </div>
 
-      <div className="text-center mb-6">
-        <span className="text-gray-500 dark:text-gray-400 font-medium">OR</span>
-      </div>
-
-      <form onSubmit={handlePredictFromText} className="card">
-        <h2 className="text-xl font-bold mb-4">Option 2: Enter Details Manually</h2>
-
-        <div className="relative">
-          <Input
-            label="Generic Medicine Name"
-            id="generic_name"
-            name="generic_name"
-            value={formData.generic_name}
-            onChange={handleInputChange}
-            placeholder="e.g., Paracetamol"
-            required
-            autoComplete="off"
-          />
-          {suggestions.length > 0 && (
-            <div className="absolute z-10 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-              {suggestions.map((med) => (
-                <button
-                  key={med.id}
-                  type="button"
-                  onClick={() => handleSuggestionClick(med)}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <div className="font-medium">{med.genericName}</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    {med.brandName} • {med.dosageForm}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <Input
-          label="Brand Name (Optional)"
-          id="brand_name"
-          name="brand_name"
-          value={formData.brand_name}
-          onChange={handleInputChange}
-          placeholder="e.g., Panadol"
-        />
-
-        <Select
-          label="Dosage Form"
-          id="dosage_form"
-          name="dosage_form"
-          value={formData.dosage_form}
-          onChange={handleInputChange}
-          options={dosageForms}
-        />
-
-        <Select
-          label="Packaging Type"
-          id="packaging_type"
-          name="packaging_type"
-          value={formData.packaging_type}
-          onChange={handleInputChange}
-          options={packagingTypes}
-        />
-
-        <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? (
-            <>
-              <Loader className="w-5 h-5 animate-spin inline mr-2" />
-              Analyzing...
-            </>
-          ) : (
-            'Get Disposal Guidance'
-          )}
-        </button>
-      </form>
-
+      {/* Output card placed below the parallel inputs */}
       {prediction && (
         <div className="card mt-6 border-2 border-primary-blue dark:border-accent-cta">
           <div className="flex items-start gap-4 mb-4">
