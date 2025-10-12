@@ -1,15 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapPin, Calendar, CheckCircle, User, Phone, Star } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
 import Textarea from '../../components/FormFields/Textarea';
 import Select from '../../components/FormFields/Select';
 import Table from '../../components/Table';
+import SearchBar from '../../components/SearchBar';
 import { mockCHWs, mockPickupRequests, currentUser, addPickupRequest } from '../../utils/mockData';
 
 export default function CHWInteraction() {
   const location = useLocation();
   const prefillData = location.state || {};
+
+  const [query, setQuery] = useState('');
+  const filteredCHWs = useMemo(() => {
+    if (!query) return mockCHWs;
+    const q = query.toLowerCase();
+    return mockCHWs.filter(
+      c =>
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.sector || '').toLowerCase().includes(q) ||
+        (c.coverageArea || '').toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q)
+    );
+  }, [query]);
 
   const [selectedCHW, setSelectedCHW] = useState(null);
   const [formData, setFormData] = useState({
@@ -141,9 +155,15 @@ export default function CHWInteraction() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="card">
-          <h2 className="text-xl font-bold mb-4">Nearby Community Health Workers</h2>
+          <h2 className="text-xl font-bold mb-2">Nearby Community Health Workers</h2>
+          <div className="mb-4 max-w-md">
+            <SearchBar
+              onSearch={(q) => setQuery(q)}
+              placeholder="Search CHWs by name, sector or coverage area..."
+            />
+          </div>
           <div className="space-y-3">
-            {mockCHWs.map((chw) => (
+            {filteredCHWs.map((chw) => (
               <div
                 key={chw.id}
                 className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
