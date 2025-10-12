@@ -364,15 +364,18 @@ export default function AddDisposal() {
             </div>
           )}
 
-          <div className="flex gap-4 flex-wrap">
-            <button onClick={handleSaveDisposal} className="btn-secondary flex-1">
+          <div className="flex gap-4 flex-nowrap">
+            <button onClick={handleSaveDisposal} className="btn-secondary flex-1 min-w-0">
               Save Disposal
             </button>
-            {prediction.requires_chw && (
-              <button onClick={handleRequestPickup} className="btn-primary flex-1">
-                Request CHW Pickup
-              </button>
-            )}
+            <button
+              onClick={handleRequestPickup}
+              className={`btn-primary flex-1 min-w-0 ${!prediction ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!prediction}
+              title={!prediction ? 'Analyze to enable pickup request' : 'Request CHW pickup'}
+            >
+              Request CHW Pickup
+            </button>
           </div>
         </div>
       )}
