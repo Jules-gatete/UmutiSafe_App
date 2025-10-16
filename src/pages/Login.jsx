@@ -1,33 +1,64 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Lock, Mail } from 'lucide-react';
 import Input from '../components/FormFields/Input';
-import { authState, setCurrentUser } from '../utils/mockData';
+import { authAPI } from '../services/api';
 import logoSvg from '../assets/logo.svg';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
 
+  useEffect(() => {
+    // Check for message from registration
+    if (location.state?.message) {
+      setMessage(location.state.message);
+    }
+  }, [location]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+    setError(''); // Clear error on input change
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setMessage('');
+    setLoading(true);
 
-    setCurrentUser('1');
+    try {
+      const response = await authAPI.login(formData.email, formData.password);
 
-    navigate('/user');
-  };
+      if (response.success) {
+        const user = response.data.user;
 
-  const quickLogin = (userId, role) => {
-    setCurrentUser(userId);
-    navigate(`/${role}`);
+        // Redirect based on role
+        if (user.role === 'admin') {
+          navigate('/admin');
+        } else if (user.role === 'chw') {
+          navigate('/chw');
+        } else {
+          navigate('/user');
+        }
+      }
+    } catch (err) {
+      if (err.response?.status === 403) {
+        setError('Your account is pending approval. You will receive an email once approved.');
+      } else {
+        setError(err.response?.data?.message || 'Invalid email or password');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -40,6 +71,18 @@ export default function Login() {
           </h1>
           <p className="text-gray-600 dark:text-gray-400">Safe Medicine Disposal Platform</p>
         </div>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-400 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {message && (
+          <div className="mb-4 p-4 bg-blue-100 dark:bg-blue-900/30 border border-blue-400 dark:border-blue-700 text-blue-700 dark:text-blue-400 rounded-lg">
+            {message}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 mb-6">
           <Input
@@ -64,35 +107,29 @@ export default function Login() {
             required
           />
 
-          <button type="submit" className="btn-primary w-full">
-            Sign In
+          <button
+            type="submit"
+            className="btn-primary w-full"
+            disabled={loading}
+          >
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                Signing In...
+              </div>
+            ) : (
+              'Sign In'
+            )}
           </button>
         </form>
 
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 text-center">
-            Quick Login (Demo Mode)
+        <div className="text-center mb-6">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary-blue dark:text-accent-cta hover:underline font-medium">
+              Create Account
+            </Link>
           </p>
-          <div className="space-y-2">
-            <button
-              onClick={() => quickLogin('1', 'user')}
-              className="btn-outline w-full text-sm"
-            >
-              Login as Household User
-            </button>
-            <button
-              onClick={() => quickLogin('2', 'chw')}
-              className="btn-outline w-full text-sm"
-            >
-              Login as CHW
-            </button>
-            <button
-              onClick={() => quickLogin('3', 'admin')}
-              className="btn-outline w-full text-sm"
-            >
-              Login as Admin
-            </button>
-          </div>
         </div>
 
         <div className="mt-6 text-center">

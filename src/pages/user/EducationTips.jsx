@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertTriangle,
   Clock,
@@ -9,7 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { mockEducationTips } from '../../utils/mockData';
+import { educationAPI } from '../../services/api';
 
 const iconMap = {
   AlertTriangle,
@@ -22,6 +22,41 @@ const iconMap = {
 
 export default function EducationTips() {
   const [expandedTips, setExpandedTips] = useState(new Set());
+  const [tips, setTips] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchTips();
+
+    // Refresh data when page becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchTips();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const fetchTips = async () => {
+    try {
+      setLoading(true);
+      const response = await educationAPI.getAll();
+      if (response.success) {
+        setTips(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching education tips:', err);
+      setError('Failed to load education tips');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleTip = (tipId) => {
     const newExpanded = new Set(expandedTips);
@@ -33,6 +68,19 @@ export default function EducationTips() {
     setExpandedTips(newExpanded);
   };
 
+  if (loading) {
+    return (
+      <div className="p-4 lg:p-8 pb-24 lg:pb-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-blue mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading education tips...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8 max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
@@ -42,9 +90,15 @@ export default function EducationTips() {
         Learn how to handle and dispose of medicines safely
       </p>
 
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {mockEducationTips.map((tip) => {
-          const Icon = iconMap[tip.icon];
+        {tips.map((tip) => {
+          const Icon = iconMap[tip.icon] || AlertTriangle;
           const isExpanded = expandedTips.has(tip.id);
 
           return (

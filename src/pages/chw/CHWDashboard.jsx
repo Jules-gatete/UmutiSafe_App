@@ -1,24 +1,91 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, Clock, CheckCircle, Truck, MapPin } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import SearchBar from '../../components/SearchBar';
-import { mockPickupRequests, currentUser } from '../../utils/mockData';
+import { chwAPI, pickupsAPI } from '../../services/api';
 
 export default function CHWDashboard() {
-  const chwRequests = mockPickupRequests.filter(r => r.chwId === currentUser.id);
+  const [requests, setRequests] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  useEffect(() => {
+    fetchData();
+
+    // Auto-refresh every 10 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 10000); // Poll every 10 seconds
+
+    // Refresh data when page becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [dashboardResult, pickupsResult] = await Promise.all([
+        chwAPI.getDashboard(),
+        chwAPI.getPickups() // Use chwAPI.getPickups() instead of pickupsAPI.getAll()
+      ]);
+
+      if (dashboardResult.success) {
+        setStats(dashboardResult.data);
+      }
+      if (pickupsResult.success) {
+        setRequests(pickupsResult.data);
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
-    if (!query) return chwRequests;
+    if (!query) return requests;
     const q = query.toLowerCase();
-    return chwRequests.filter(r => (r.patientName || '').toLowerCase().includes(q) || (r.address || '').toLowerCase().includes(q));
-  }, [chwRequests, query]);
+    return requests.filter(r =>
+      (r.userName || '').toLowerCase().includes(q) ||
+      (r.pickupLocation || '').toLowerCase().includes(q)
+    );
+  }, [requests, query]);
 
-  const pendingRequests = chwRequests.filter(r => r.status === 'pending');
-  const scheduledRequests = chwRequests.filter(r => r.status === 'scheduled');
-  const completedRequests = chwRequests.filter(r => r.status === 'completed');
+  const pendingRequests = requests.filter(r => r.status === 'pending');
+  const scheduledRequests = requests.filter(r => r.status === 'scheduled');
+  const completedRequests = requests.filter(r => r.status === 'completed');
 
-  const recentRequests = chwRequests.slice(0, 5);
+  const recentRequests = requests.slice(0, 5);
+
+  if (loading) {
+    return (
+      <div className="p-4 lg:p-8 pb-24 lg:pb-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-blue mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
@@ -30,6 +97,12 @@ export default function CHWDashboard() {
           Manage pickup requests and help your community dispose of medicines safely
         </p>
       </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard

@@ -1,9 +1,17 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Home, Users, BookOpen, User } from 'lucide-react';
-import { authState } from '../utils/mockData';
 
 export default function BottomNav() {
+  const location = useLocation();
+  const [currentRole, setCurrentRole] = useState('user');
+
+  // Update role whenever location changes or component mounts
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    setCurrentRole(user?.role || 'user');
+  }, [location]);
+
   const userLinks = [
     { to: '/user', icon: Home, label: 'Home' },
     { to: '/user/chw-interaction', icon: Users, label: 'CHW' },
@@ -25,9 +33,9 @@ export default function BottomNav() {
   ];
 
   const links =
-    authState.currentRole === 'user'
+    currentRole === 'user'
       ? userLinks
-      : authState.currentRole === 'chw'
+      : currentRole === 'chw'
       ? chwLinks
       : adminLinks;
 

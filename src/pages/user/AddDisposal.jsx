@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Upload, Loader } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
 import Select from '../../components/FormFields/Select';
-import { predictFromText, predictFromImage } from '../../utils/apiMocks';
-import { addDisposal } from '../../utils/mockData';
+import { medicinesAPI, disposalsAPI } from '../../services/api';
 import SearchBar from '../../components/SearchBar';
 
 export default function AddDisposal() {
@@ -43,9 +42,13 @@ export default function AddDisposal() {
     setFormData({ ...formData, [name]: value });
 
     if (name === 'generic_name' && value.length >= 2) {
-      const results = await searchMedicines(value);
-      if (results.success) {
-        setSuggestions(results.data);
+      try {
+        const results = await medicinesAPI.search(value);
+        if (results.success) {
+          setSuggestions(results.data);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
       }
     } else if (name === 'generic_name') {
       setSuggestions([]);
@@ -83,7 +86,12 @@ export default function AddDisposal() {
 
     setLoading(true);
     try {
-      const result = await predictFromText(formData);
+      const result = await medicinesAPI.predictFromText({
+        genericName: formData.generic_name,
+        brandName: formData.brand_name,
+        dosageForm: formData.dosage_form,
+        packagingType: formData.packaging_type
+      });
 
       if (result.success) {
         setPrediction(result.data);
@@ -104,12 +112,12 @@ export default function AddDisposal() {
 
     setLoading(true);
     try {
-      const result = await predictFromImage(imageFile);
+      const result = await medicinesAPI.predictFromImage(imageFile);
 
       if (result.success) {
         setFormData({
-          generic_name: result.data.ocr_text.medicine_name,
-          brand_name: result.data.ocr_text.brand_name,
+          generic_name: result.data.ocr_text?.medicine_name || '',
+          brand_name: result.data.ocr_text?.brand_name || '',
           dosage_form: '',
           packaging_type: '',
         });
@@ -123,7 +131,7 @@ export default function AddDisposal() {
     }
   };
 
-  const handleSaveDisposal = () => {
+  const handleSaveDisposal = async () => {
     if (!prediction) {
       alert('Please predict the medicine classification first.');
       return;
@@ -141,10 +149,20 @@ export default function AddDisposal() {
       reason: 'user_initiated',
     };
 
-    addDisposal(disposal);
+    try {
+      setLoading(true);
+      const result = await disposalsAPI.create(disposal);
 
-    alert('Disposal saved successfully!');
-    navigate('/user/history');
+      if (result.success) {
+        alert('Disposal saved successfully!');
+        navigate('/user/history');
+      }
+    } catch (error) {
+      console.error('Error saving disposal:', error);
+      alert('Failed to save disposal. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRequestPickup = () => {
@@ -165,8 +183,12 @@ export default function AddDisposal() {
   };
 
   const handlePageSearch = async (q) => {
-    const res = await searchMedicines(q);
-    if (res.success) setSuggestions(res.data);
+    try {
+      const res = await medicinesAPI.search(q);
+      if (res.success) setSuggestions(res.data);
+    } catch (error) {
+      console.error('Search error:', error);
+    }
   };
 
   return (

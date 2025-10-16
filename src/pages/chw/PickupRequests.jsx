@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Calendar, Eye } from 'lucide-react';
 import Table from '../../components/Table';
@@ -6,18 +6,67 @@ import Modal from '../../components/Modal';
 import Select from '../../components/FormFields/Select';
 import Textarea from '../../components/FormFields/Textarea';
 import SearchBar from '../../components/SearchBar';
-import { mockPickupRequests, currentUser, updatePickupRequestStatus } from '../../utils/mockData';
+import { chwAPI, pickupsAPI } from '../../services/api';
 
 export default function PickupRequests() {
-  const chwRequests = mockPickupRequests.filter(r => r.chwId === currentUser.id);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [reviewStatus, setReviewStatus] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [query, setQuery] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchPickups();
+
+    // Auto-refresh every 10 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchPickups();
+    }, 10000); // Poll every 10 seconds
+
+    // Auto-refresh when page becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchPickups();
+      }
+    };
+
+    const handleFocus = () => {
+      fetchPickups();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  const fetchPickups = async () => {
+    try {
+      setLoading(true);
+      // Use chwAPI.getPickups() to get pickups assigned to this CHW
+      const result = await chwAPI.getPickups();
+
+      if (result.success) {
+        setRequests(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching pickups:', err);
+      setError('Failed to load pickup requests');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredRequests = useMemo(() => {
-    let filtered = chwRequests;
+    let filtered = requests;
     if (filterStatus !== 'all') {
       filtered = filtered.filter(r => r.status === filterStatus);
     }
@@ -25,13 +74,13 @@ export default function PickupRequests() {
       const q = query.toLowerCase();
       filtered = filtered.filter(
         r =>
-          (r.userName || '').toLowerCase().includes(q) ||
+          (r.requester?.name || '').toLowerCase().includes(q) ||
           (r.medicineName || '').toLowerCase().includes(q) ||
           (r.pickupLocation || '').toLowerCase().includes(q)
       );
     }
     return filtered;
-  }, [chwRequests, filterStatus, query]);
+  }, [requests, filterStatus, query]);
 
   const statusOptions = [
     { value: 'scheduled', label: 'Schedule Pickup' },
@@ -42,9 +91,10 @@ export default function PickupRequests() {
 
   const columns = [
     {
-      key: 'userName',
+      key: 'requester',
       label: 'Requester',
       sortable: true,
+      render: (value) => value?.name || 'N/A',
     },
     {
       key: 'medicineName',
@@ -66,7 +116,7 @@ export default function PickupRequests() {
       key: 'preferredTime',
       label: 'Preferred Time',
       sortable: true,
-      render: (value) => new Date(value).toLocaleString(),
+      render: (value) => value ? new Date(value).toLocaleString() : 'N/A',
     },
     {
       key: 'status',
@@ -96,16 +146,44 @@ export default function PickupRequests() {
     setReviewNotes('');
   };
 
-  const handleSubmitReview = () => {
+  const handleSubmitReview = async () => {
     if (!reviewStatus) {
       alert('Please select a status');
       return;
     }
 
-    updatePickupRequestStatus(selectedRequest.id, reviewStatus, reviewNotes);
-    alert('Request status updated successfully!');
-    setSelectedRequest(null);
+    try {
+      setSubmitting(true);
+      const result = await pickupsAPI.updateStatus(selectedRequest.id, {
+        status: reviewStatus,
+        notes: reviewNotes
+      });
+
+      if (result.success) {
+        alert('Request status updated successfully!');
+        setSelectedRequest(null);
+        fetchPickups(); // Refresh the list
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Failed to update status. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="p-4 lg:p-8 pb-24 lg:pb-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-blue mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading pickup requests...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
@@ -115,6 +193,12 @@ export default function PickupRequests() {
       <p className="text-gray-600 dark:text-gray-400 mb-8">
         Review and manage medicine pickup requests
       </p>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {error}
+        </div>
+      )}
 
       <div className="card mb-6">
         <div className="flex items-center gap-4 mb-4 flex-wrap">
@@ -171,7 +255,7 @@ export default function PickupRequests() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Requester</p>
-                <p className="font-medium">{selectedRequest.userName}</p>
+                <p className="font-medium">{selectedRequest.requester?.name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Medicine</p>
@@ -179,12 +263,12 @@ export default function PickupRequests() {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Reason</p>
-                <p className="font-medium">{selectedRequest.reason.replace('_', ' ')}</p>
+                <p className="font-medium">{selectedRequest.reason?.replace('_', ' ') || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Preferred Time</p>
                 <p className="font-medium">
-                  {new Date(selectedRequest.preferredTime).toLocaleString()}
+                  {selectedRequest.preferredTime ? new Date(selectedRequest.preferredTime).toLocaleString() : 'N/A'}
                 </p>
               </div>
             </div>
@@ -221,11 +305,19 @@ export default function PickupRequests() {
             />
 
             <div className="flex gap-4">
-              <button onClick={() => setSelectedRequest(null)} className="btn-outline flex-1">
+              <button
+                onClick={() => setSelectedRequest(null)}
+                className="btn-outline flex-1"
+                disabled={submitting}
+              >
                 Cancel
               </button>
-              <button onClick={handleSubmitReview} className="btn-primary flex-1">
-                Submit
+              <button
+                onClick={handleSubmitReview}
+                className="btn-primary flex-1"
+                disabled={submitting}
+              >
+                {submitting ? 'Submitting...' : 'Submit'}
               </button>
             </div>
           </div>

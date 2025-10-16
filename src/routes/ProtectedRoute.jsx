@@ -1,14 +1,16 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { authState } from '../utils/mockData';
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
-  if (!authState.isAuthenticated) {
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+  if (!token || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(authState.currentRole)) {
-    return <Navigate to={`/${authState.currentRole}`} replace />;
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return <Navigate to={`/${user.role}`} replace />;
   }
 
   return children;

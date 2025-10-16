@@ -1,18 +1,73 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle, History, BookOpen, Package, Clock, Truck } from 'lucide-react';
 import StatCard from '../../components/StatCard';
-import { currentUser, mockDisposals, mockPickupRequests } from '../../utils/mockData';
+import { disposalsAPI, pickupsAPI } from '../../services/api';
 
 export default function Dashboard() {
-  const userDisposals = mockDisposals.filter(d => d.userId === currentUser.id);
-  const userPickups = mockPickupRequests.filter(p => p.userId === currentUser.id);
+  const [disposals, setDisposals] = useState([]);
+  const [pickups, setPickups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const totalDisposed = userDisposals.length;
-  const pendingReview = userDisposals.filter(d => d.status === 'pending_review').length;
-  const pickupsRequested = userPickups.length;
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const recentDisposals = userDisposals.slice(0, 3);
+  useEffect(() => {
+    fetchData();
+
+    // Auto-refresh every 10 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 10000); // Poll every 10 seconds
+
+    // Refresh data when page becomes visible (user switches back to tab or navigates to page)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    };
+
+    const handleFocus = () => {
+      fetchData();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [disposalsResult, pickupsResult] = await Promise.all([
+        disposalsAPI.getAll(),
+        pickupsAPI.getAll()
+      ]);
+
+      if (disposalsResult.success) {
+        setDisposals(disposalsResult.data);
+      }
+      if (pickupsResult.success) {
+        setPickups(pickupsResult.data);
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalDisposed = disposals.length;
+  const pendingReview = disposals.filter(d => d.status === 'pending_review').length;
+  const pickupsRequested = pickups.length;
+
+  const recentDisposals = disposals.slice(0, 3);
 
   const statusColors = {
     completed: 'success',
@@ -20,11 +75,30 @@ export default function Dashboard() {
     pickup_requested: 'info',
   };
 
+  if (loading) {
+    return (
+      <div className="p-4 lg:p-8 pb-24 lg:pb-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-blue mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {error}
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-          Welcome back, {currentUser.name}
+          Welcome back, {user.name}
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
           Keep your home safe by disposing of medicines properly

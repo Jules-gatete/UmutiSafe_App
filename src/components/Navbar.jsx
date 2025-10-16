@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Menu, Bell, ChevronDown, User } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Menu, Bell, ChevronDown, User, LogOut } from 'lucide-react';
 import DarkModeToggle from './DarkModeToggle';
-import { currentUser, authState, switchRole } from '../utils/mockData';
+import { authAPI } from '../services/api';
 import logoSvg from '../assets/logo.svg';
 
 export default function Navbar({ onMenuClick }) {
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const navigate = useNavigate();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
 
-  const handleRoleSwitch = (role) => {
-    switchRole(role);
-    setShowRoleDropdown(false);
-    window.location.href = `/${role}`;
+  const handleLogout = () => {
+    authAPI.logout();
+    navigate('/login');
   };
 
   const roleLabels = {
@@ -21,6 +21,8 @@ export default function Navbar({ onMenuClick }) {
     admin: 'Admin',
   };
 
+  if (!user) return null;
+
   return (
     <nav className="sticky top-0 z-40 bg-surface-light dark:bg-surface-dark border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="px-4 py-3">
@@ -28,8 +30,9 @@ export default function Navbar({ onMenuClick }) {
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={onMenuClick}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent-cta min-w-[44px] min-h-[44px]"
+              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent-cta min-w-[44px] min-h-[44px]"
               aria-label="Toggle menu"
+              title="Toggle sidebar"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -52,41 +55,10 @@ export default function Navbar({ onMenuClick }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <button
-                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-cta min-h-[44px]"
-                aria-label="Switch role"
-                aria-expanded={showRoleDropdown}
-              >
-                <span className="text-sm font-medium">
-                  {roleLabels[authState.currentRole]}
-                </span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-
-              {showRoleDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-surface-light dark:bg-surface-dark rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2">
-                  <button
-                    onClick={() => handleRoleSwitch('user')}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
-                  >
-                    Household User
-                  </button>
-                  <button
-                    onClick={() => handleRoleSwitch('chw')}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
-                  >
-                    Community Health Worker
-                  </button>
-                  <button
-                    onClick={() => handleRoleSwitch('admin')}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
-                  >
-                    Admin / FDA
-                  </button>
-                </div>
-              )}
+            <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 min-h-[44px]">
+              <span className="text-sm font-medium">
+                {roleLabels[user.role]}
+              </span>
             </div>
 
             <button
@@ -107,7 +79,7 @@ export default function Navbar({ onMenuClick }) {
                 aria-expanded={showUserDropdown}
               >
                 <div className="w-8 h-8 rounded-full bg-primary-blue text-white flex items-center justify-center font-semibold text-sm">
-                  {currentUser.avatar}
+                  {user.name.charAt(0).toUpperCase()}
                 </div>
                 <ChevronDown className="w-4 h-4 hidden sm:block" />
               </button>
@@ -115,19 +87,26 @@ export default function Navbar({ onMenuClick }) {
               {showUserDropdown && (
                 <div className="absolute right-0 mt-2 w-56 bg-surface-light dark:bg-surface-dark rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2">
                   <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <p className="font-semibold text-sm">{currentUser.name}</p>
+                    <p className="font-semibold text-sm">{user.name}</p>
                     <p className="text-xs text-gray-600 dark:text-gray-400">
-                      {currentUser.email}
+                      {user.email}
                     </p>
                   </div>
                   <Link
-                    to={`/${authState.currentRole}/profile`}
+                    to={`/${user.role}/profile`}
                     className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
                     onClick={() => setShowUserDropdown(false)}
                   >
                     <User className="w-4 h-4" />
                     Profile
                   </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm text-red-600 dark:text-red-400"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
                 </div>
               )}
             </div>

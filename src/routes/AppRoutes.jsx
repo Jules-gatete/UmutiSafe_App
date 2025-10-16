@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
 
 import Login from '../pages/Login';
+import Register from '../pages/Register';
 import NotFound from '../pages/NotFound';
 
 import UserDashboard from '../pages/user/Dashboard';
@@ -19,20 +20,23 @@ import CHWProfile from '../pages/chw/CHWProfile';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ManageUsers from '../pages/admin/ManageUsers';
 import MedicinesRegistry from '../pages/admin/MedicinesRegistry';
+import EducationTipsManagement from '../pages/admin/EducationTips';
 import SystemReports from '../pages/admin/SystemReports';
 
-import { authState } from '../utils/mockData';
-
 export default function AppRoutes() {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const isAuthenticated = !!localStorage.getItem('token');
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
       <Route
         path="/"
         element={
           <Navigate
-            to={authState.isAuthenticated ? `/${authState.currentRole}` : '/login'}
+            to={isAuthenticated && user ? `/${user.role}` : '/login'}
             replace
           />
         }
@@ -133,6 +137,14 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <MedicinesRegistry />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/education"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <EducationTipsManagement />
           </ProtectedRoute>
         }
       />

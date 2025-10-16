@@ -5,7 +5,6 @@ import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
 import AppRoutes from './routes/AppRoutes';
 import { initTheme } from './utils/theme';
-import { authState } from './utils/mockData';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,8 +14,9 @@ function App() {
   }, []);
 
   const isLoginPage = window.location.pathname === '/login';
+  const isRegisterPage = window.location.pathname === '/register';
 
-  if (isLoginPage) {
+  if (isLoginPage || isRegisterPage) {
     return (
       <Router>
         <AppRoutes />
@@ -32,7 +32,7 @@ function App() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-          <main className="flex-1 overflow-y-auto lg:ml-64">
+          <main className="flex-1 overflow-y-auto">
             <AppRoutes />
           </main>
         </div>

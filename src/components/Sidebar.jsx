@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
   PlusCircle,
@@ -14,10 +14,19 @@ import {
   FileText,
   Database,
   ChevronLeft,
+  Lightbulb,
 } from 'lucide-react';
-import { authState } from '../utils/mockData';
 
 export default function Sidebar({ isOpen, onClose }) {
+  const location = useLocation();
+  const [currentRole, setCurrentRole] = useState('user');
+
+  // Update role whenever location changes or component mounts
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    setCurrentRole(user?.role || 'user');
+  }, [location]);
+
   const userLinks = [
     { to: '/user', icon: Home, label: 'Dashboard', end: true },
     { to: '/user/add-disposal', icon: PlusCircle, label: 'New Disposal' },
@@ -37,13 +46,14 @@ export default function Sidebar({ isOpen, onClose }) {
     { to: '/admin', icon: Home, label: 'Dashboard', end: true },
     { to: '/admin/users', icon: Users, label: 'Manage Users' },
     { to: '/admin/medicines', icon: Database, label: 'Medicines Registry' },
+    { to: '/admin/education', icon: Lightbulb, label: 'Education Tips' },
     { to: '/admin/reports', icon: FileText, label: 'System Reports' },
   ];
 
   const links =
-    authState.currentRole === 'user'
+    currentRole === 'user'
       ? userLinks
-      : authState.currentRole === 'chw'
+      : currentRole === 'chw'
       ? chwLinks
       : adminLinks;
 
@@ -54,7 +64,7 @@ export default function Sidebar({ isOpen, onClose }) {
     <>
       {isOpen && (
         <div
-          className="fixed left-0 right-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          className="fixed left-0 right-0 bg-black bg-opacity-50 z-30"
           onClick={onClose}
           aria-hidden="true"
           style={{ top: `${NAVBAR_HEIGHT}px`, height: `calc(100vh - ${NAVBAR_HEIGHT}px)` }}
@@ -63,16 +73,17 @@ export default function Sidebar({ isOpen, onClose }) {
 
       <aside
         className={`fixed left-0 bg-surface-light dark:bg-surface-dark border-r border-gray-200 dark:border-gray-700 transition-transform duration-300 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         } w-64 flex flex-col z-30`}
         style={{ top: `${NAVBAR_HEIGHT}px`, height: `calc(100vh - ${NAVBAR_HEIGHT}px)` }}
       >
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 lg:hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-semibold">Menu</h2>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent-cta"
             aria-label="Close menu"
+            title="Close sidebar"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
