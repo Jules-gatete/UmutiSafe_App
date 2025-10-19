@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "ocr_text": {
+    "medicine_name": "Paracetamol",
+    "brand_name": "Panadol"
+  },
+  "predicted_category": "1",
+  "risk_level": "LOW",
+  "confidence": 0.764,
+  "disposal_guidance": "Contact local pharmacy or healthcare facility for disposal instructions.",
+  "safety_notes": "Always prioritize safety and environmental protection."
+}

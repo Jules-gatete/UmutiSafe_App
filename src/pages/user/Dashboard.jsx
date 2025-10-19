@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { PlusCircle, History, BookOpen, Package, Clock, Truck } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { PlusCircle, History, BookOpen, Package, Clock, Truck, CheckCircle, AlertTriangle } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import { disposalsAPI, pickupsAPI } from '../../services/api';
 
@@ -63,6 +63,21 @@ export default function Dashboard() {
     }
   };
 
+  // Determine if a dashboard card should be visually "active" based on current location
+  const location = useLocation();
+  const getActiveFor = (filterName) => {
+    // Read ?filter= from location.search
+    try {
+      const params = new URLSearchParams(location.search);
+      const f = params.get('filter') || 'all';
+      if (filterName === 'all') return f === 'all' || !f;
+      if (filterName === 'highRisk') return f === 'highRisk';
+      return f === filterName;
+    } catch (e) {
+      return false;
+    }
+  };
+
   const totalDisposed = disposals.length;
   const pendingReview = disposals.filter(d => d.status === 'pending_review').length;
   const pickupsRequested = pickups.length;
@@ -105,25 +120,51 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard
-          icon={Package}
-          label="Total Disposed"
-          value={totalDisposed}
-          color="blue"
-        />
-        <StatCard
-          icon={Clock}
-          label="Pending Review"
-          value={pendingReview}
-          color="yellow"
-        />
-        <StatCard
-          icon={Truck}
-          label="Pickups Requested"
-          value={pickupsRequested}
-          color="green"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <Link to="/user/history" className={`block ${getActiveFor('all') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
+          <StatCard
+            icon={Package}
+            label="Total Disposals"
+            value={totalDisposed}
+            color="blue"
+          />
+        </Link>
+
+        <Link to="/user/history?filter=completed" className={`block ${getActiveFor('completed') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
+          <StatCard
+            icon={CheckCircle}
+            label="Completed"
+            value={disposals.filter(d => d.status === 'completed').length}
+            color="green"
+          />
+        </Link>
+
+        <Link to="/user/history?filter=pending_review" className={`block ${getActiveFor('pending_review') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
+          <StatCard
+            icon={Clock}
+            label="Pending Review"
+            value={pendingReview}
+            color="yellow"
+          />
+        </Link>
+
+        <Link to="/user/history?filter=pickup_requested" className={`block ${getActiveFor('pickup_requested') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
+          <StatCard
+            icon={Truck}
+            label="Pickup Requested"
+            value={pickupsRequested}
+            color="teal"
+          />
+        </Link>
+
+        <Link to="/user/history?filter=highRisk" className={`block ${getActiveFor('highRisk') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
+          <StatCard
+            icon={AlertTriangle}
+            label="High Risk Items"
+            value={disposals.filter(d => d.riskLevel === 'HIGH').length}
+            color="red"
+          />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -146,7 +187,7 @@ export default function Dashboard() {
 
         <Link
           to="/user/history"
-          className="card hover:scale-105 transition-transform bg-primary-green text-white"
+          className={`card hover:scale-105 transition-transform bg-primary-green text-white ${getActiveFor('all') ? 'ring-2 ring-accent-cta' : ''}`}
         >
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white bg-opacity-20 rounded-lg">
@@ -186,7 +227,7 @@ export default function Dashboard() {
           </h2>
           <Link
             to="/user/history"
-            className="text-sm text-primary-blue dark:text-accent-cta hover:underline font-medium"
+            className={`text-sm text-primary-blue dark:text-accent-cta hover:underline font-medium ${getActiveFor('all') ? 'underline font-semibold' : ''}`}
           >
             View All
           </Link>

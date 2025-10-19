@@ -11,28 +11,31 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsResult, pendingResult] = await Promise.all([
-          adminAPI.getStats(),
-          adminAPI.getPendingUsers()
-        ]);
-
-        if (statsResult.success) {
-          setStats(statsResult.data);
-        }
-
-        if (pendingResult.success) {
-          setPendingUsers(pendingResult.data);
-        }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
+
+  // Extracted fetchData so we can refresh manually
+  async function fetchData() {
+    try {
+      setLoading(true);
+      const [statsResult, pendingResult] = await Promise.all([
+        adminAPI.getStats(),
+        adminAPI.getPendingUsers()
+      ]);
+
+      if (statsResult && statsResult.success) {
+        setStats(statsResult.data);
+      }
+
+      if (pendingResult && pendingResult.success) {
+        setPendingUsers(pendingResult.data);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -53,11 +56,53 @@ export default function AdminDashboard() {
     );
   }
 
+  // Prepare risk distribution safely
+  const riskDist = stats.risk_distribution || { LOW: 0, MEDIUM: 0, HIGH: 0 };
   const riskData = [
-    { name: 'Low Risk', value: stats.risk_distribution.LOW, color: '#2E8B57' },
-    { name: 'Medium Risk', value: stats.risk_distribution.MEDIUM, color: '#F59E0B' },
-    { name: 'High Risk', value: stats.risk_distribution.HIGH, color: '#E03E2D' },
+    { name: 'Low Risk', value: riskDist.LOW || 0, color: '#2E8B57' },
+    { name: 'Medium Risk', value: riskDist.MEDIUM || 0, color: '#F59E0B' },
+    { name: 'High Risk', value: riskDist.HIGH || 0, color: '#E03E2D' },
   ];
+
+  // Monthly trend: use last 5 months of backend data (backend should return an ordered array)
+  // Build a 3-month window ending with current month and fill zeros for missing months
+  const buildLastNMonths = (n) => {
+    const months = [];
+    const now = new Date();
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleString('default', { month: 'short' });
+      months.push({ label, year: d.getFullYear(), monthIndex: d.getMonth() });
+    }
+    return months;
+  };
+
+  const last3 = buildLastNMonths(3);
+  const backendTrend = Array.isArray(stats.monthly_trend) ? stats.monthly_trend : [];
+  // backendTrend expected items like { month: 'YYYY-MM' or 'Mon', count: number }
+  const monthlyTrend = last3.map(m => {
+    // Try to find matching backend entry by month label or YYYY-MM
+    const found = backendTrend.find(bt => {
+      if (!bt) return false;
+      const btMonthLabel = (new Date(bt.month || bt.label || '')).toLocaleString('default', { month: 'short' });
+      return btMonthLabel === m.label || bt.month === `${m.year}-${String(m.monthIndex+1).padStart(2,'0')}`;
+    });
+    return { month: m.label, count: found ? (found.count || 0) : 0 };
+  });
+
+  // Top medicines from backend
+  const topMedicines = Array.isArray(stats.top_medicines) ? stats.top_medicines : [];
+
+  // Compute trend percentage if previous_month_count provided, otherwise omit
+  const computeTrend = () => {
+    const current = stats.completed_this_month || 0;
+    const previous = stats.previous_month || 0;
+    if (!previous) return '';
+    const pct = ((current - previous) / Math.max(1, previous)) * 100;
+    const sign = pct >= 0 ? '+' : '';
+    return `${sign}${pct.toFixed(0)}% this month`;
+  };
+  const trendText = computeTrend();
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
@@ -65,9 +110,12 @@ export default function AdminDashboard() {
         <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
           Admin Dashboard
         </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Monitor system-wide medicine disposal activities
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-gray-600 dark:text-gray-400">
+            Monitor system-wide medicine disposal activities
+          </p>
+          <button onClick={fetchData} className="btn-outline ml-auto">Refresh</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -76,7 +124,6 @@ export default function AdminDashboard() {
           label="Total Users"
           value={stats.total_users || 0}
           color="blue"
-          trend="+12% this month"
         />
         <StatCard
           icon={Heart}
@@ -84,18 +131,20 @@ export default function AdminDashboard() {
           value={stats.total_chws || 0}
           color="green"
         />
-        <StatCard
-          icon={Package}
-          label="Total Disposals"
-          value={stats.total_disposals || 0}
-          color="blue"
-        />
+        <Link to="/admin/disposals" className="block">
+          <StatCard
+            icon={Package}
+            label="Total Disposals"
+            value={stats.total_disposals || 0}
+            color="blue"
+          />
+        </Link>
         <StatCard
           icon={TrendingUp}
           label="This Month"
           value={stats.completed_this_month || 0}
           color="green"
-          trend="+8% from last month"
+          trend={trendText}
         />
       </div>
 
@@ -150,7 +199,7 @@ export default function AdminDashboard() {
         <div className="card">
           <h2 className="text-xl font-bold mb-4">Monthly Disposal Trend</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={stats.monthly_trend}>
+            <BarChart data={monthlyTrend}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="month" />
               <YAxis />
@@ -188,27 +237,35 @@ export default function AdminDashboard() {
       <div className="card">
         <h2 className="text-xl font-bold mb-4">Top Disposed Medicines</h2>
         <div className="space-y-3">
-          {stats.top_medicines.map((med, index) => (
-            <div key={index} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary-blue text-white flex items-center justify-center font-bold text-sm">
-                  {index + 1}
+          {topMedicines.length === 0 ? (
+            <div className="p-4 text-gray-600">No data available</div>
+          ) : (
+            topMedicines.map((med, index) => {
+              const maxCount = topMedicines[0]?.count || 1;
+              const widthPercent = maxCount ? (med.count / maxCount) * 100 : 0;
+              return (
+                <div key={index} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary-blue text-white flex items-center justify-center font-bold text-sm">
+                      {index + 1}
+                    </div>
+                    <span className="font-medium">{med.name}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-48 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className="bg-primary-green h-2 rounded-full"
+                        style={{ width: `${widthPercent}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-600 dark:text-gray-400 w-16 text-right">
+                      {med.count}
+                    </span>
+                  </div>
                 </div>
-                <span className="font-medium">{med.name}</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-48 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-primary-green h-2 rounded-full"
-                    style={{ width: `${(med.count / stats.top_medicines[0].count) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-gray-600 dark:text-gray-400 w-16 text-right">
-                  {med.count}
-                </span>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </div>
     </div>

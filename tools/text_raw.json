@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "medicine_info": {
+    "generic_name": "Paracetamol",
+    "brand_name": "Panadol",
+    "dosage_form": "Tablet"
+  },
+  "predictions": {
+    "disposal_category": "1",
+    "risk_level": "LOW",
+    "confidence": 0.764,
+    "all_probabilities": {
+      "1": 0.764,
+      "2": 0.115,
+      "3": 0.096,
+      "4": 0.025
+    }
+  },
+  "safety_guidance": {
+    "category_name": "1",
+    "risk_level": "LOW",
+    "prohibitions": "Follow general medicine disposal guidelines. Consult healthcare provider for specific instructions.",
+    "risks": "Unknown risks. Professional guidance recommended for safe disposal.",
+    "procedure": "Contact local pharmacy or healthcare facility for disposal instructions.",
+    "special_instructions": "Always prioritize safety and environmental protection."
+  },
+  "timestamp": "2025-10-19T16:40:06.952036"
+}

@@ -22,6 +22,8 @@ import ManageUsers from '../pages/admin/ManageUsers';
 import MedicinesRegistry from '../pages/admin/MedicinesRegistry';
 import EducationTipsManagement from '../pages/admin/EducationTips';
 import SystemReports from '../pages/admin/SystemReports';
+import AdminDisposalsList from '../pages/admin/AdminDisposalsList';
+import AdminDisposalInfo from '../pages/admin/AdminDisposalInfo';
 
 export default function AppRoutes() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -121,6 +123,22 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/disposals"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDisposalsList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/disposals/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDisposalInfo />
           </ProtectedRoute>
         }
       />

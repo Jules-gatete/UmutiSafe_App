@@ -18,6 +18,7 @@ export default function AddDisposal() {
   const [imagePreview, setImagePreview] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
   const dosageForms = [
@@ -85,6 +86,7 @@ export default function AddDisposal() {
     }
 
     setLoading(true);
+    setServerError(null);
     try {
       const result = await medicinesAPI.predictFromText({
         genericName: formData.generic_name,
@@ -93,43 +95,53 @@ export default function AddDisposal() {
         packagingType: formData.packaging_type
       });
 
-      if (result.success) {
+      if (result && result.success) {
         setPrediction(result.data);
+      } else {
+        // handle server-side failure shape
+        const msg = result?.error?.message || result?.error || 'Prediction failed. Please try again.';
+        setServerError(msg);
+        setPrediction(null);
       }
     } catch (error) {
       console.error('Prediction error:', error);
-      alert('Failed to predict. Please try again.');
+      setServerError(error?.message || 'Failed to predict. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePredictFromImage = async () => {
-    if (!imageFile) {
-      alert('Please upload an image first.');
-      return;
-    }
+ const handlePredictFromImage = async () => {
+  if (!imageFile) {
+    alert('Please upload an image first.');
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const result = await medicinesAPI.predictFromImage(imageFile);
+  setLoading(true);
+  setServerError(null);
+  try {
+    const result = await medicinesAPI.predictFromImage(imageFile);
 
-      if (result.success) {
-        setFormData({
-          generic_name: result.data.ocr_text?.medicine_name || '',
-          brand_name: result.data.ocr_text?.brand_name || '',
-          dosage_form: '',
-          packaging_type: '',
-        });
-        setPrediction(result.data);
-      }
-    } catch (error) {
-      console.error('Image prediction error:', error);
-      alert('Failed to process image. Please try again.');
-    } finally {
-      setLoading(false);
+    if (result.success) {
+      setFormData({
+        generic_name: result.data.ocr_text?.medicine_name || '',
+        brand_name: result.data.ocr_text?.brand_name || '',
+        dosage_form: '',
+        packaging_type: '',
+      });
+      setPrediction(result.data);
+    } else {
+      const msg = result?.error?.message || result?.error || 'Image prediction failed. Please try again.';
+      setServerError(msg);
+      setPrediction(null);
     }
-  };
+  } catch (error) {
+    console.error('Image prediction error:', error);
+    setServerError(error?.message || 'Failed to process image. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSaveDisposal = async () => {
     if (!prediction) {
@@ -153,13 +165,16 @@ export default function AddDisposal() {
       setLoading(true);
       const result = await disposalsAPI.create(disposal);
 
-      if (result.success) {
+      if (result && result.success) {
         alert('Disposal saved successfully!');
         navigate('/user/history');
+      } else {
+        const msg = result?.error?.message || result?.error || 'Failed to save disposal.';
+        setServerError(msg);
       }
     } catch (error) {
       console.error('Error saving disposal:', error);
-      alert('Failed to save disposal. Please try again.');
+      setServerError(error?.message || 'Failed to save disposal. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -204,6 +219,12 @@ export default function AddDisposal() {
       <p className="text-gray-600 dark:text-gray-400 mb-8">
         Enter medicine details to get proper disposal guidance
       </p>
+
+      {serverError && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {serverError}
+        </div>
+      )}
 
       {/* Make the upload card and manual form parallel on md+ screens */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

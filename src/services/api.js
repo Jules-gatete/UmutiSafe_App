@@ -1,7 +1,10 @@
 import axios from 'axios';
 
-// API Base URL
+// API Base URL (main backend)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Model API (FastAPI) - separate backend serving ML model
+const MODEL_API_URL = import.meta.env.VITE_MODEL_API_URL || 'http://localhost:8000';
 
 // Create axios instance
 const api = axios.create({
@@ -123,6 +126,73 @@ export const medicinesAPI = {
   delete: async (id) => {
     const response = await api.delete(`/medicines/${id}`);
     return response.data;
+  },
+  
+  // Predict medicine disposal from text
+  predictFromText: async (data) => {
+    // FastAPI expects application/x-www-form-urlencoded form fields
+    try {
+      const params = new URLSearchParams();
+      params.append('generic_name', data.genericName || data.generic_name || '');
+      params.append('brand_name', data.brandName || data.brand_name || '');
+      params.append('dosage_form', data.dosageForm || data.dosage_form || '');
+      params.append('packaging_type', data.packagingType || data.packaging_type || '');
+
+      const resp = await axios.post(`${MODEL_API_URL}/api/predict/text`, params.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+
+      // Map FastAPI response to the frontend expected shape used in AddDisposal.jsx
+      const f = resp.data;
+      const mapped = {
+        success: !!f.success,
+        ocr_text: {
+          medicine_name: f.ocr_info?.extracted_info?.generic_name || f.medicine_info?.generic_name || '',
+          brand_name: f.ocr_info?.extracted_info?.brand_name || f.medicine_info?.brand_name || ''
+        },
+        predicted_category: f.predictions?.disposal_category || f.safety_guidance?.category_name || '',
+        risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
+        confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
+        disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
+        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || ''
+      };
+
+      return { success: true, data: mapped };
+    } catch (err) {
+      console.error('predictFromText error', err?.response?.data || err.message || err);
+      return { success: false, error: err?.response?.data || err.message };
+    }
+  },
+  
+  // Predict medicine disposal from image
+  predictFromImage: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('file', imageFile);
+
+    try {
+      const resp = await axios.post(`${MODEL_API_URL}/api/predict/image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const f = resp.data;
+      const mapped = {
+        success: !!f.success,
+        ocr_text: {
+          medicine_name: f.ocr_info?.extracted_info?.generic_name || f.medicine_info?.generic_name || '',
+          brand_name: f.ocr_info?.extracted_info?.brand_name || f.medicine_info?.brand_name || ''
+        },
+        predicted_category: f.predictions?.disposal_category || f.safety_guidance?.category_name || '',
+        risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
+        confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
+        disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
+        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || ''
+      };
+
+      return { success: true, data: mapped };
+    } catch (err) {
+      console.error('predictFromImage error', err?.response?.data || err.message || err);
+      return { success: false, error: err?.response?.data || err.message };
+    }
   }
 };
 

@@ -15,6 +15,7 @@ import {
   Database,
   ChevronLeft,
   Lightbulb,
+  Package,
 } from 'lucide-react';
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -44,6 +45,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   const adminLinks = [
     { to: '/admin', icon: Home, label: 'Dashboard', end: true },
+    { to: '/admin/disposals', icon: Package, label: 'Disposals' },
     { to: '/admin/users', icon: Users, label: 'Manage Users' },
     { to: '/admin/medicines', icon: Database, label: 'Medicines Registry' },
     { to: '/admin/education', icon: Lightbulb, label: 'Education Tips' },

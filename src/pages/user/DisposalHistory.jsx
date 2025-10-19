@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Filter, Eye, Package, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Filter, Eye, Package, CheckCircle, Clock, AlertTriangle, Truck } from 'lucide-react';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import StatCard from '../../components/StatCard';
@@ -8,12 +9,25 @@ import { disposalsAPI } from '../../services/api';
 export default function DisposalHistory() {
   const [selectedDisposal, setSelectedDisposal] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [highRiskFilter, setHighRiskFilter] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [disposals, setDisposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [serverError, setServerError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDisposals();
+
+    // apply filter from query params (e.g., ?filter=pending_review or ?filter=highRisk)
+    const params = new URLSearchParams(window.location.search);
+    const f = params.get('filter');
+    if (f) {
+      if (f === 'highRisk') applyCardFilter('highRisk');
+      else applyCardFilter(f);
+    }
 
     // Auto-refresh every 10 seconds for real-time updates
     const pollInterval = setInterval(() => {
@@ -38,9 +52,14 @@ export default function DisposalHistory() {
   const fetchDisposals = async () => {
     try {
       setLoading(true);
+      setServerError('');
       const response = await disposalsAPI.getAll();
-      if (response.success) {
+      if (response && response.success) {
         setDisposals(response.data);
+      } else {
+        const msg = response?.error?.message || response?.error || 'Failed to load disposals from server';
+        setServerError(msg);
+        setDisposals([]);
       }
     } catch (err) {
       console.error('Error fetching disposals:', err);
@@ -50,21 +69,46 @@ export default function DisposalHistory() {
     }
   };
 
+  // navigate to CHW interaction page with prefilled form data
+  const goToChwPickup = (disposal) => {
+    const prefill = {
+      medicineName: disposal.genericName || disposal.generic_name || '',
+      disposalGuidance: disposal.disposalGuidance || disposal.disposal_guidance || disposal.safetyNotes || '',
+      // other fields can be left blank and filled in the CHWInteraction form
+    };
+
+    navigate('/user/chw-interaction', { state: prefill });
+  };
+
   const filteredDisposals =
-    filterStatus === 'all'
+    // if highRiskFilter is active, show only HIGH risk items
+    highRiskFilter
+      ? disposals.filter(d => d.riskLevel === 'HIGH')
+      : filterStatus === 'all'
       ? disposals
       : disposals.filter(d => d.status === filterStatus);
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const total = disposals.length;
-    const completed = disposals.filter(d => d.status === 'completed').length;
-    const pending = disposals.filter(d => d.status === 'pending_review').length;
-    const pickupRequested = disposals.filter(d => d.status === 'pickup_requested').length;
-    const highRisk = disposals.filter(d => d.riskLevel === 'HIGH').length;
+  // (Stats removed from History page — Dashboard now shows summary cards)
 
-    return { total, completed, pending, pickupRequested, highRisk };
-  }, [disposals]);
+  // Pagination calculations
+  const totalItems = filteredDisposals.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const pagedData = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredDisposals.slice(start, start + pageSize);
+  }, [filteredDisposals, page, pageSize]);
+
+  const applyCardFilter = (type) => {
+    // type: 'all' | 'completed' | 'pending_review' | 'pickup_requested' | 'highRisk'
+    setPage(1);
+    if (type === 'highRisk') {
+      setHighRiskFilter(true);
+      setFilterStatus('all');
+    } else {
+      setHighRiskFilter(false);
+      setFilterStatus(type);
+    }
+  };
 
   const columns = [
     {
@@ -166,33 +210,9 @@ export default function DisposalHistory() {
         </div>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          title="Total Disposals"
-          value={stats.total}
-          icon={Package}
-          color="blue"
-        />
-        <StatCard
-          title="Completed"
-          value={stats.completed}
-          icon={CheckCircle}
-          color="green"
-        />
-        <StatCard
-          title="Pending Review"
-          value={stats.pending}
-          icon={Clock}
-          color="yellow"
-        />
-        <StatCard
-          title="High Risk Items"
-          value={stats.highRisk}
-          icon={AlertTriangle}
-          color="red"
-        />
-      </div>
+      {/* success messages are handled in the CHW interaction page after submitting pickup requests */}
+
+      {/* Stats removed here: History page is table-only (Dashboard shows summaries) */}
 
       <div className="card mb-6">
         <div className="flex items-center gap-4 mb-4">
@@ -207,23 +227,81 @@ export default function DisposalHistory() {
             <option value="pending_review">Pending Review</option>
             <option value="pickup_requested">Pickup Requested</option>
           </select>
+          <button onClick={fetchDisposals} className="btn-outline ml-auto">Refresh</button>
         </div>
       </div>
 
+      {serverError && (
+        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
+          {serverError}
+        </div>
+      )}
+
       <div className="card">
-        <Table
-          columns={columns}
-          data={filteredDisposals}
-          actions={(row) => (
-            <button
-              onClick={() => setSelectedDisposal(row)}
-              className="btn-outline py-2 px-4 text-sm"
-            >
-              <Eye className="w-4 h-4 inline mr-1" />
-              View
-            </button>
-          )}
-        />
+        {filteredDisposals.length === 0 ? (
+          <div className="p-6 text-center text-gray-600 dark:text-gray-400">No disposal records found.</div>
+        ) : (
+          <>
+            <Table
+              columns={columns}
+              data={pagedData}
+              actions={(row) => (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedDisposal(row)}
+                      className="btn-outline py-2 px-4 text-sm"
+                    >
+                      <Eye className="w-4 h-4 inline mr-1" />
+                      View
+                    </button>
+
+                    {/* Show Request Pickup when not already pickup_requested and no pickupRequest exists */}
+                    {row.status === 'pending_review' && !row.pickupRequest && (
+                      <button
+                        onClick={() => goToChwPickup(row)}
+                        className="btn-primary py-2 px-4 text-sm flex items-center gap-2"
+                      >
+                        <Truck className="w-4 h-4" />
+                        Request Pickup
+                      </button>
+                    )}
+                  </div>
+                )}
+            />
+
+            {/* Pagination controls */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn-outline px-3 py-1"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Prev
+                </button>
+                <div className="text-sm text-gray-600">
+                  Page {page} of {totalPages}
+                </div>
+                <button
+                  className="btn-outline px-3 py-1"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Rows:</label>
+                <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="input-field">
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                </select>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <Modal
