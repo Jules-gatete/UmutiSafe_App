@@ -20,6 +20,8 @@ export default function AddDisposal() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const [showOCRDetails, setShowOCRDetails] = useState(false);
+  const [showAdvancedGuidance, setShowAdvancedGuidance] = useState(false);
 
   const dosageForms = [
     { value: 'Tablet', label: 'Tablet' },
@@ -163,14 +165,33 @@ export default function AddDisposal() {
 
     try {
       setLoading(true);
-      const result = await disposalsAPI.create(disposal);
 
-      if (result && result.success) {
-        alert('Disposal saved successfully!');
-        navigate('/user/history');
+      // If an image was used for prediction and is available, send it as multipart/form-data
+      if (imageFile) {
+        const payload = {
+          ...disposal,
+          file: imageFile
+        };
+
+        const result = await disposalsAPI.create(payload);
+
+        if (result && result.success) {
+          alert('Disposal saved successfully!');
+          navigate('/user/history');
+        } else {
+          const msg = result?.error?.message || result?.error || 'Failed to save disposal.';
+          setServerError(msg);
+        }
       } else {
-        const msg = result?.error?.message || result?.error || 'Failed to save disposal.';
-        setServerError(msg);
+        const result = await disposalsAPI.create(disposal);
+
+        if (result && result.success) {
+          alert('Disposal saved successfully!');
+          navigate('/user/history');
+        } else {
+          const msg = result?.error?.message || result?.error || 'Failed to save disposal.';
+          setServerError(msg);
+        }
       }
     } catch (error) {
       console.error('Error saving disposal:', error);
@@ -399,6 +420,85 @@ export default function AddDisposal() {
               {prediction.disposal_guidance}
             </p>
           </div>
+
+          {/* OCR details when available (collapsible) */}
+          {prediction.ocr_info && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setShowOCRDetails(!showOCRDetails)}
+                className="text-sm text-primary-blue dark:text-accent-cta font-medium mb-2"
+              >
+                {showOCRDetails ? 'Hide OCR details' : 'Show OCR details'}
+              </button>
+
+              {showOCRDetails && (
+                <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border">
+                  <h4 className="font-bold mb-2">OCR Extraction (image)</h4>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <div><strong>Confidence:</strong> {prediction.ocr_info.confidence ?? 'N/A'}</div>
+                    <div><strong>Medicine texts found:</strong> {prediction.ocr_info.medicine_texts_found ?? 0}</div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div><strong>Generic name:</strong> {prediction.ocr_info.extracted_info?.generic_name || '—'}</div>
+                    <div><strong>Brand name:</strong> {prediction.ocr_info.extracted_info?.brand_name || '—'}</div>
+                    <div><strong>Dosage / Strength:</strong> {prediction.ocr_info.extracted_info?.dosage_strength || '—'}</div>
+                    <div><strong>Dosage form:</strong> {prediction.ocr_info.extracted_info?.dosage_form || '—'}</div>
+                    <div className="md:col-span-2"><strong>Active ingredients:</strong> {(prediction.ocr_info.extracted_info?.active_ingredients || []).join(', ') || '—'}</div>
+                    {prediction.ocr_info.extracted_info?.other_info && (
+                      <div className="md:col-span-2"><strong>Other:</strong> {(prediction.ocr_info.extracted_info.other_info || []).join(', ')}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {/* Safety guidance (primary + collapsible advanced details) */}
+          {prediction.safety_guidance && (
+            <div className="mb-4">
+              {/* Show the most actionable instruction first (prefer procedure, otherwise disposal guidance) */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-2">
+                <h4 className="font-bold mb-2">Recommended Action</h4>
+                <p className="text-gray-700 dark:text-gray-300">
+                  {prediction.safety_guidance.procedure || prediction.disposal_guidance || 'Follow local disposal procedures.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvancedGuidance(!showAdvancedGuidance)}
+                className="text-sm text-primary-blue dark:text-accent-cta font-medium mb-2"
+              >
+                {showAdvancedGuidance ? 'Hide advanced guidance' : 'Show advanced guidance'}
+              </button>
+
+              {showAdvancedGuidance && (
+                <div className="bg-yellow-50 dark:bg-yellow-900 rounded-lg p-4 border">
+                  <h4 className="font-bold mb-2">Advanced Safety Guidance</h4>
+                  {prediction.safety_guidance.prohibitions && (
+                    <div className="mb-2">
+                      <strong>Prohibitions:</strong>
+                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.prohibitions}</p>
+                    </div>
+                  )}
+                  {prediction.safety_guidance.risks && (
+                    <div className="mb-2">
+                      <strong>Risks:</strong>
+                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.risks}</p>
+                    </div>
+                  )}
+                  {prediction.safety_guidance.special_instructions && (
+                    <div>
+                      <strong>Special instructions:</strong>
+                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.special_instructions}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {prediction.safety_notes && (
             <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 rounded-lg p-4 mb-4">

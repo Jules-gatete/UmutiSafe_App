@@ -154,7 +154,12 @@ export const medicinesAPI = {
         risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
         confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
         disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
-        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || ''
+        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || '',
+        // Pass through raw blocks so UI can render detailed guidance and OCR metadata
+        ocr_info: f.ocr_info || null,
+        medicine_info: f.medicine_info || null,
+        predictions: f.predictions || null,
+        safety_guidance: f.safety_guidance || null
       };
 
       return { success: true, data: mapped };
@@ -185,7 +190,12 @@ export const medicinesAPI = {
         risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
         confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
         disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
-        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || ''
+        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || '',
+        // Pass through raw blocks so UI can render detailed guidance and OCR metadata
+        ocr_info: f.ocr_info || null,
+        medicine_info: f.medicine_info || null,
+        predictions: f.predictions || null,
+        safety_guidance: f.safety_guidance || null
       };
 
       return { success: true, data: mapped };
@@ -213,6 +223,21 @@ export const disposalsAPI = {
 
   // Create disposal
   create: async (disposalData) => {
+    // If there's a file (image) attached, send multipart/form-data
+    if (disposalData.file) {
+      const fd = new FormData();
+      // append fields
+      Object.keys(disposalData).forEach((k) => {
+        if (k === 'file') return fd.append('image', disposalData.file);
+        if (disposalData[k] !== undefined && disposalData[k] !== null) fd.append(k, disposalData[k]);
+      });
+
+      const response = await api.post('/disposals', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return response.data;
+    }
+
     const response = await api.post('/disposals', disposalData);
     return response.data;
   },
