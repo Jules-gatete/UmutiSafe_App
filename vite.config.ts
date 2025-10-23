@@ -10,6 +10,10 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Force new filenames by adding build timestamp to chunks
+        chunkFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        entryFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        assetFileNames: `assets/[name]-[hash]-${Date.now()}.[ext]`,
         // create separate vendor chunks for heavy libraries
         manualChunks(id) {
           if (id.includes('node_modules')) {
