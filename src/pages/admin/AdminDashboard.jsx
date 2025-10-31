@@ -10,6 +10,53 @@ export default function AdminDashboard() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Normalize various possible backend shapes into a consistent frontend shape
+  const normalizeStats = (raw) => {
+    if (!raw) return null;
+    // sometimes backend returns { data: { ... } } or { data: { stats: { ... } } }
+    const outer = raw.data || raw;
+    const src = outer.stats || outer.data || outer;
+
+    const total_users = src.total_users ?? src.totalUsers ?? src.users_count ?? 0;
+    const total_chws = src.total_chws ?? src.totalChws ?? src.chw_count ?? 0;
+    const total_disposals = src.total_disposals ?? src.totalDisposals ?? src.disposals_count ?? 0;
+  const completed_this_month = src.completed_this_month ?? src.completedThisMonth ?? src.completed ?? 0;
+    const previous_month = src.previous_month ?? src.previousMonth ?? 0;
+
+    // Risk distribution: allow keys in any case
+    const rawRisk = src.risk_distribution || src.riskDistribution || src.risk || {};
+    const risk_distribution = {};
+    Object.keys(rawRisk).forEach((k) => {
+      if (k == null) return;
+      risk_distribution[String(k).toUpperCase()] = rawRisk[k] ?? 0;
+    });
+
+    // Monthly trend: accept multiple shapes
+    const monthly_trend = Array.isArray(src.monthly_trend)
+      ? src.monthly_trend
+      : Array.isArray(src.monthlyTrend)
+      ? src.monthlyTrend
+      : [];
+
+    const top_medicines = Array.isArray(src.top_medicines)
+      ? src.top_medicines
+      : Array.isArray(src.topMedicines)
+      ? src.topMedicines
+      : [];
+
+    return {
+      ...src,
+      total_users,
+      total_chws,
+      total_disposals,
+      completed_this_month,
+      previous_month,
+      risk_distribution,
+      monthly_trend,
+      top_medicines
+    };
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -24,7 +71,7 @@ export default function AdminDashboard() {
       ]);
 
       if (statsResult && statsResult.success) {
-        setStats(statsResult.data);
+        setStats(normalizeStats(statsResult.data));
       }
 
       if (pendingResult && pendingResult.success) {
@@ -56,8 +103,8 @@ export default function AdminDashboard() {
     );
   }
 
-  // Prepare risk distribution safely
-  const riskDist = stats.risk_distribution || { LOW: 0, MEDIUM: 0, HIGH: 0 };
+  // Prepare risk distribution safely (keys normalized to uppercase in normalizeStats)
+  const riskDist = (stats && stats.risk_distribution) || { LOW: 0, MEDIUM: 0, HIGH: 0 };
   const riskData = [
     { name: 'Low Risk', value: riskDist.LOW || 0, color: '#2E8B57' },
     { name: 'Medium Risk', value: riskDist.MEDIUM || 0, color: '#F59E0B' },
@@ -78,41 +125,75 @@ export default function AdminDashboard() {
   };
 
   const last3 = buildLastNMonths(3);
-  const backendTrend = Array.isArray(stats.monthly_trend) ? stats.monthly_trend : [];
-  // backendTrend expected items like { month: 'YYYY-MM' or 'Mon', count: number }
-  const monthlyTrend = last3.map(m => {
-    // Try to find matching backend entry by month label or YYYY-MM
-    const found = backendTrend.find(bt => {
+  const backendTrend = (stats && Array.isArray(stats.monthly_trend)) ? stats.monthly_trend : [];
+  // backendTrend expected items like { month: 'YYYY-MM' or 'Mon' or monthIndex: number, count: number }
+  const monthlyTrend = last3.map((m) => {
+    const found = backendTrend.find((bt) => {
       if (!bt) return false;
-      const btMonthLabel = (new Date(bt.month || bt.label || '')).toLocaleString('default', { month: 'short' });
-      return btMonthLabel === m.label || bt.month === `${m.year}-${String(m.monthIndex+1).padStart(2,'0')}`;
+      const candidate = bt.month ?? bt.label ?? bt.month_label ?? bt.month_label_short ?? bt;
+
+      // If backend uses YYYY-MM format
+      if (typeof candidate === 'string' && /^\d{4}-\d{2}$/.test(candidate)) {
+        const [y, mm] = candidate.split('-');
+        const monthLabel = new Date(Number(y), Number(mm) - 1, 1).toLocaleString('default', { month: 'short' });
+        return monthLabel === m.label;
+      }
+
+      // If candidate is a string label like 'Sep' or 'September'
+      if (typeof candidate === 'string') {
+        try {
+          const parsed = new Date(candidate);
+          if (!isNaN(parsed)) {
+            const parsedLabel = parsed.toLocaleString('default', { month: 'short' });
+            if (parsedLabel === m.label) return true;
+          }
+        } catch (e) { /* ignore */ }
+        // direct compare
+        if (candidate === m.label || candidate.startsWith(m.label)) return true;
+      }
+
+      // If backend provides numeric month index (1-12)
+      const monthIndex = bt.monthIndex ?? bt.month_index ?? bt.m;
+      if (typeof monthIndex === 'number') {
+        return monthIndex === (m.monthIndex + 1) || monthIndex === m.monthIndex;
+      }
+
+      return false;
     });
-    return { month: m.label, count: found ? (found.count || 0) : 0 };
+
+    const count = found ? (found.count ?? found.value ?? found.total ?? 0) : 0;
+    return { month: m.label, count };
   });
 
   // Top medicines from backend
-  const topMedicines = Array.isArray(stats.top_medicines) ? stats.top_medicines : [];
+  const topMedicines = (stats && Array.isArray(stats.top_medicines)) ? stats.top_medicines : (stats && Array.isArray(stats.topMedicines) ? stats.topMedicines : []);
+
+  // Determine completed this month value consistently with monthlyTrend when possible
+  const currentMonthLabel = last3[last3.length - 1].label;
+  const monthlyEntryForCurrent = monthlyTrend.find((m) => m.month === currentMonthLabel);
+  const completedThisMonth = (stats && (stats.completed_this_month ?? stats.completed ?? null)) ?? (monthlyEntryForCurrent ? monthlyEntryForCurrent.count : 0);
 
   // Compute trend percentage if previous_month_count provided, otherwise omit
   const computeTrend = () => {
-    const current = stats.completed_this_month || 0;
+    const current = completedThisMonth || 0;
     const previous = stats.previous_month || 0;
     if (!previous) return '';
     const pct = ((current - previous) / Math.max(1, previous)) * 100;
     const sign = pct >= 0 ? '+' : '';
     return `${sign}${pct.toFixed(0)}% this month`;
   };
+
   const trendText = computeTrend();
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-          Admin Dashboard
+         Dashboard
         </h1>
         <div className="flex items-center gap-4">
           <p className="text-gray-600 dark:text-gray-400">
-            Monitor system-wide medicine disposal activities
+            Monitor community system-wide medicine disposal activities
           </p>
           <button onClick={fetchData} className="btn-outline ml-auto">Refresh</button>
         </div>
@@ -142,7 +223,7 @@ export default function AdminDashboard() {
         <StatCard
           icon={TrendingUp}
           label="This Month"
-          value={stats.completed_this_month || 0}
+          value={completedThisMonth || 0}
           color="green"
           trend={trendText}
         />

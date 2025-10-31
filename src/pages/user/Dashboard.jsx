@@ -55,6 +55,18 @@ export default function Dashboard() {
       if (pickupsResult.success) {
         setPickups(pickupsResult.data);
       }
+      // Debug info to help track mismatches between pickups and disposals
+      try {
+        // eslint-disable-next-line no-console
+        console.debug('Dashboard fetchData results', {
+          disposalsCount: disposalsResult?.data?.length,
+          pickupsCount: pickupsResult?.data?.length,
+          disposalsSample: (disposalsResult?.data || []).slice(0, 3).map(d => ({ id: d.id, status: d.status, pickupRequestId: d.pickupRequestId })),
+          pickupsSample: (pickupsResult?.data || []).slice(0, 3).map(p => ({ id: p.id, status: p.status, userId: p.userId }))
+        });
+      } catch (e) {
+        // ignore logging errors
+      }
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to load dashboard data');
@@ -80,9 +92,16 @@ export default function Dashboard() {
 
   const totalDisposed = disposals.length;
   const pendingReview = disposals.filter(d => d.status === 'pending_review').length;
-  const pickupsRequested = pickups.length;
 
-  const recentDisposals = disposals.slice(0, 3);
+  // Align Dashboard pickup count with the Disposal History filter which shows
+  // disposals whose `status === 'pickup_requested'`. This ensures the card and
+  // the History page display the same number.
+  const pickupsRequested = disposals.filter(d => d.status === 'pickup_requested').length;
+
+  // Ensure recent disposals are sorted by createdAt (most recent first) before slicing
+  const recentDisposals = [...disposals]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 3);
 
   const statusColors = {
     completed: 'success',

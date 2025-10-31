@@ -450,6 +450,12 @@ export const adminAPI = {
     return response.data;
   },
 
+  // Get single disposal by id (Admin)
+  getDisposalById: async (id) => {
+    const response = await api.get(`/admin/disposals/${id}`);
+    return response.data;
+  },
+
   // Get all pickups
   getPickups: async (params = {}) => {
     const response = await api.get('/admin/pickups', { params });

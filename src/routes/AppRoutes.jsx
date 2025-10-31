@@ -25,6 +25,7 @@ const EducationTipsManagement = lazy(() => import('../pages/admin/EducationTips'
 const SystemReports = lazy(() => import('../pages/admin/SystemReports'));
 const AdminDisposalsList = lazy(() => import('../pages/admin/AdminDisposalsList'));
 const AdminDisposalInfo = lazy(() => import('../pages/admin/AdminDisposalInfo'));
+const AdminProfile = lazy(() => import('../pages/admin/AdminProfile'));
 
 export default function AppRoutes() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -126,6 +127,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/profile"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminProfile />
             </ProtectedRoute>
           }
         />

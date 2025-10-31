@@ -85,6 +85,7 @@ export default function PickupRequests() {
   const statusOptions = [
     { value: 'scheduled', label: 'Schedule Pickup' },
     { value: 'collected', label: 'Mark as Collected' },
+    // Send a UI action 'requires_inspection' — backend will map this to 'pending'
     { value: 'requires_inspection', label: 'Requires Inspection' },
     { value: 'rejected', label: 'Reject Request' },
   ];
@@ -100,6 +101,14 @@ export default function PickupRequests() {
       key: 'medicineName',
       label: 'Medicine',
       sortable: true,
+    },
+    {
+      key: 'disposal',
+      label: 'Disposal',
+      sortable: false,
+      render: (_value, row) => (
+        row.disposal ? `${row.disposal.genericName}${row.disposal.brandName ? ` (${row.disposal.brandName})` : ''}` : 'N/A'
+      )
     },
     {
       key: 'pickupLocation',
@@ -156,7 +165,7 @@ export default function PickupRequests() {
       setSubmitting(true);
       const result = await pickupsAPI.updateStatus(selectedRequest.id, {
         status: reviewStatus,
-        notes: reviewNotes
+        chwNotes: reviewNotes
       });
 
       if (result.success) {
@@ -259,7 +268,7 @@ export default function PickupRequests() {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Medicine</p>
-                <p className="font-medium">{selectedRequest.medicineName}</p>
+                  <p className="font-medium">{selectedRequest.disposal?.genericName || selectedRequest.medicineName}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Reason</p>
@@ -283,7 +292,7 @@ export default function PickupRequests() {
 
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
               <h4 className="font-semibold mb-2">Disposal Guidance:</h4>
-              <p className="text-sm">{selectedRequest.disposalGuidance}</p>
+              <p className="text-sm">{selectedRequest.disposal?.disposalGuidance || selectedRequest.disposalGuidance || 'N/A'}</p>
             </div>
 
             <Select

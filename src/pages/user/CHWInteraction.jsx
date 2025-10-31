@@ -6,7 +6,7 @@ import Textarea from '../../components/FormFields/Textarea';
 import Select from '../../components/FormFields/Select';
 import Table from '../../components/Table';
 import SearchBar from '../../components/SearchBar';
-import { chwAPI, pickupsAPI } from '../../services/api';
+import { chwAPI, pickupsAPI, disposalsAPI } from '../../services/api';
 
 export default function CHWInteraction() {
   const location = useLocation();
@@ -163,6 +163,18 @@ export default function CHWInteraction() {
 
         // Refresh pickups list
         fetchData();
+
+        // If we navigated here from a disposal, attach the pickup to that disposal
+        try {
+          const disposalId = prefillData.disposalId;
+          const pickupId = response.data?.id || response.data?.data?.id || response?.data?.id || null;
+          if (disposalId && pickupId) {
+            // update disposal status and link pickupRequestId
+            await disposalsAPI.update(disposalId, { status: 'pickup_requested', pickupRequestId: pickupId });
+          }
+        } catch (attachErr) {
+          console.warn('Failed to attach pickup to disposal', attachErr);
+        }
       }
     } catch (err) {
       console.error('Error submitting pickup request:', err);

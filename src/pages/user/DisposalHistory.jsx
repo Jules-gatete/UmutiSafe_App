@@ -74,6 +74,7 @@ export default function DisposalHistory() {
     const prefill = {
       medicineName: disposal.genericName || disposal.generic_name || '',
       disposalGuidance: disposal.disposalGuidance || disposal.disposal_guidance || disposal.safetyNotes || '',
+      disposalId: disposal.id || disposal._id || null,
       // other fields can be left blank and filled in the CHWInteraction form
     };
 
