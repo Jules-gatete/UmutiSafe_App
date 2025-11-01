@@ -3,15 +3,15 @@
 **UmutiSafe** is an AI-powered web platform that helps households in Rwanda safely dispose of unused or expired medicines while connecting them with **Community Health Workers (CHWs)**.
 It combines **machine learning classification**, **OCR analysis**, and **interactive dashboards** to ensure safe, ethical, and traceable medicine disposal.
 
- **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umutisafe.vercel.app)
+ **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umuti-safe-app.vercel.app/login)
  
- **Backend API (GitHub):** [https://github.com/umutisafe/api-backend](https://github.com/umutisafe/api-backend)
+ **Backend API:** [https://github.com/umutisafe/api-backend](https://umutisafe-backend.onrender.com)
  
- **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/umutisafe/ai-models)
+ **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git)
 
 ##  **Video demo**
 
-🔗 **Video:** [Umutisafe Demo Video](https://github.com/umutisafe/ai-models)
+🔗 **Video:** [Umutisafe Demo Video](https://youtu.be/BR4Ove8GRzY)
 
 
 ---
@@ -79,7 +79,7 @@ src/
  ├── components/   # Navbar, Sidebar, Forms, Tables, Modals, etc.
  ├── pages/        # User, CHW, Admin interfaces
  ├── routes/       # Protected + role-based routes
- ├── utils/        # Theme, mock APIs, helpers
+ ├── utils/        # Theme, APIs, helpers
  ├── App.jsx       # Root component
  └── main.jsx      # Entry point
 ```
@@ -96,8 +96,7 @@ src/
 | Admin stats         | `GET /api/admin/stats`                               |
 | Reports export      | `POST /api/admin/reports/export`                     |
 
- **AI Models:** Integrated with the [UmutiSafe AI Models API](https://github.com/umutisafe/ai-models) for OCR extraction and disposal category prediction.
-Mock APIs in `src/utils/apiMocks.js` can be switched to real endpoints for deployment.
+ **AI Models:** Integrated with the [UmutiSafe AI Models API](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git) for OCR extraction and disposal category prediction.
 
 ---
 
@@ -150,7 +149,7 @@ This project is for **educational and demonstration purposes** under an open lic
 ##  **Support & Contact**
 
 **Email:** [support@umutisafe.rw](mailto:support@umutisafe.rw)
-**GitHub Issues:** [UmutiSafe Frontend Repo](https://github.com/umutisafe/frontend)
+**UmutiSafe Platform:** [UmutiSafe App](https://umuti-safe-app.vercel.app/login)
 
 ---
 
