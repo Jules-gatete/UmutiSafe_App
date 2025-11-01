@@ -1,7 +1,7 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 
-export default function ProtectedRoute({ children, allowedRoles = [] }) {
+export default function ProtectedRoute({ allowedRoles = [] }) {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
@@ -13,5 +13,6 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
     return <Navigate to={`/${user.role}`} replace />;
   }
 
-  return children;
+  // For React Router v6 nested routes, render an Outlet instead of returning children
+  return <Outlet />;
 }

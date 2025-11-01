@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime']
+  },
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
@@ -17,17 +20,35 @@ export default defineConfig({
         // create separate vendor chunks for heavy libraries
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // Bundle react and react-dom together to avoid circular import issues
-            // (some runtime helpers may be shared and splitting them caused
-            // vendor chunks to form circular dependencies where createContext
-            // could be undefined at module execution time).
-            if (id.includes('react') || id.includes('react-dom') || id.includes('/react/index')) return 'vendor_react';
-            if (id.includes('react-router-dom')) return 'vendor_router';
-            if (id.includes('recharts')) return 'vendor_recharts';
-            if (id.includes('leaflet') || id.includes('react-leaflet') || id.includes('@react-leaflet')) return 'vendor_leaflet';
+            // CRITICAL: Bundle ALL react-related packages together
+            if (
+              id.includes('react') || 
+              id.includes('react-dom') || 
+              id.includes('react-is') ||
+              id.includes('scheduler') ||
+              id.includes('react/jsx-runtime') ||
+              id.includes('use-sync-external-store')
+            ) {
+              return 'vendor_react';
+            }
+            
+            // Keep router separate but AFTER react check
+            if (id.includes('react-router')) return 'vendor_router';
+            
+            // Recharts and its dependencies
+            if (
+              id.includes('recharts') || 
+              id.includes('victory-') ||
+              id.includes('d3-')
+            ) {
+              return 'vendor_recharts';
+            }
+            
+            if (id.includes('leaflet') || id.includes('@react-leaflet')) return 'vendor_leaflet';
             if (id.includes('lucide-react')) return 'vendor_icons';
             if (id.includes('axios')) return 'vendor_axios';
             if (id.includes('@supabase')) return 'vendor_supabase';
+            
             return 'vendor_misc';
           }
         },

@@ -48,144 +48,34 @@ export default function AppRoutes() {
           }
         />
 
-        <Route
-          path="/user"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <UserDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/add-disposal"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <AddDisposal />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/history"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <DisposalHistory />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/education"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <EducationTips />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/chw-interaction"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <CHWInteraction />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/user/profile"
-          element={
-            <ProtectedRoute allowedRoles={['user']}>
-              <UserProfile />
-            </ProtectedRoute>
-          }
-        />
+        {/* User routes (protected) */}
+        <Route path="/user" element={<ProtectedRoute allowedRoles={["user"]} />}>
+          <Route index element={<UserDashboard />} />
+          <Route path="add-disposal" element={<AddDisposal />} />
+          <Route path="history" element={<DisposalHistory />} />
+          <Route path="education" element={<EducationTips />} />
+          <Route path="chw-interaction" element={<CHWInteraction />} />
+          <Route path="profile" element={<UserProfile />} />
+        </Route>
 
-        <Route
-          path="/chw"
-          element={
-            <ProtectedRoute allowedRoles={['chw']}>
-              <CHWDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chw/pickup-requests"
-          element={
-            <ProtectedRoute allowedRoles={['chw']}>
-              <PickupRequests />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chw/profile"
-          element={
-            <ProtectedRoute allowedRoles={['chw']}>
-              <CHWProfile />
-            </ProtectedRoute>
-          }
-        />
+        {/* CHW routes (protected) */}
+        <Route path="/chw" element={<ProtectedRoute allowedRoles={["chw"]} />}>
+          <Route index element={<CHWDashboard />} />
+          <Route path="pickup-requests" element={<PickupRequests />} />
+          <Route path="profile" element={<CHWProfile />} />
+        </Route>
 
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/profile"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminProfile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/disposals"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDisposalsList />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/disposals/:id"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDisposalInfo />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ManageUsers />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/medicines"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <MedicinesRegistry />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/education"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <EducationTipsManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/reports"
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <SystemReports />
-            </ProtectedRoute>
-          }
-        />
+        {/* Admin routes (protected) */}
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]} />}>
+          <Route index element={<AdminDashboard />} />
+          <Route path="profile" element={<AdminProfile />} />
+          <Route path="disposals" element={<AdminDisposalsList />} />
+          <Route path="disposals/:id" element={<AdminDisposalInfo />} />
+          <Route path="users" element={<ManageUsers />} />
+          <Route path="medicines" element={<MedicinesRegistry />} />
+          <Route path="education" element={<EducationTipsManagement />} />
+          <Route path="reports" element={<SystemReports />} />
+        </Route>
 
         <Route path="*" element={<NotFound />} />
       </Routes>
