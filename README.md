@@ -4,7 +4,9 @@
 It combines **machine learning classification**, **OCR analysis**, and **interactive dashboards** to ensure safe, ethical, and traceable medicine disposal.
 
  **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umutisafe.vercel.app)
+ 
  **Backend API (GitHub):** [https://github.com/umutisafe/api-backend](https://github.com/umutisafe/api-backend)
+ 
  **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/umutisafe/ai-models)
 
 ##  **Video demo**
