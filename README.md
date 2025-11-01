@@ -1,30 +1,35 @@
-# 🌿 **UmutiSafe – Medicine Disposal & CHW Integration Platform**
+#  **UmutiSafe – Medicine Disposal & CHW Integration Platform**
 
 **UmutiSafe** is an AI-powered web platform that helps households in Rwanda safely dispose of unused or expired medicines while connecting them with **Community Health Workers (CHWs)**.
 It combines **machine learning classification**, **OCR analysis**, and **interactive dashboards** to ensure safe, ethical, and traceable medicine disposal.
 
-🔗 **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umutisafe.vercel.app)
-🔗 **Backend API (GitHub):** [https://github.com/umutisafe/api-backend](https://github.com/umutisafe/api-backend)
-🔗 **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/umutisafe/ai-models)
+ **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umutisafe.vercel.app)
+ **Backend API (GitHub):** [https://github.com/umutisafe/api-backend](https://github.com/umutisafe/api-backend)
+ **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/umutisafe/ai-models)
+
+##  **Video demo**
+
+🔗 **Video:** [Umutisafe Demo Video](https://github.com/umutisafe/ai-models)
+
 
 ---
 
-## ✅ **Core Features**
+##  **Core Features**
 
-### 🏠 Household Users
+###  Household Users
 
 * Upload or enter medicine details for **AI-based disposal classification**
 * Automatic **risk level assignment (LOW / MEDIUM / HIGH)**
 * Request pickups from nearby **CHWs**
 * Track disposal history and access **educational resources**
 
-### 👩‍⚕️ Community Health Workers (CHWs)
+###  Community Health Workers (CHWs)
 
 * Manage and schedule **pickup requests**
 * View request statistics and completion history
 * Toggle **availability status** for accepting new requests
 
-### 🏛️ Admin / FDA
+###  Admin / FDA
 
 * Centralized **dashboard** with real-time analytics
 * Manage **users, CHWs, and medicine registry**
@@ -32,7 +37,7 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
 
 ---
 
-## 🛠️ **Technology Stack**
+##  **Technology Stack**
 
 | Layer                | Tools / Libraries                              |
 | -------------------- | ---------------------------------------------- |
@@ -46,7 +51,7 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
 
 ---
 
-## 🚀 **Quick Start**
+##  **Quick Start**
 
 ```bash
 # 1. Install dependencies
@@ -67,7 +72,7 @@ npm run preview
 
 ---
 
-## 📁 **Simplified Folder Structure**
+##  **Simplified Folder Structure**
 
 ```
 src/
@@ -91,12 +96,12 @@ src/
 | Admin stats         | `GET /api/admin/stats`                               |
 | Reports export      | `POST /api/admin/reports/export`                     |
 
-🧠 **AI Models:** Integrated with the [UmutiSafe AI Models API](https://github.com/umutisafe/ai-models) for OCR extraction and disposal category prediction.
+ **AI Models:** Integrated with the [UmutiSafe AI Models API](https://github.com/umutisafe/ai-models) for OCR extraction and disposal category prediction.
 Mock APIs in `src/utils/apiMocks.js` can be switched to real endpoints for deployment.
 
 ---
 
-## 🧠 **AI & OCR Integration Overview**
+##  **AI & OCR Integration Overview**
 
 * **OCR Pipeline:** Extracts text from medicine labels using Vision-OCR on Colab.
 * **AI Classifier:** Categorizes medicines into **five disposal classes** (Recyclable, Hazardous, Expired, Non-returnable, Controlled).
@@ -106,27 +111,26 @@ This ensures **end-to-end automation** with minimal manual intervention and high
 
 ---
 
-## 📊 **Security & Ethics**
+##  **Security & Ethics**
 
-* ✅ Bias monitoring and explainable AI for fairness
-* ✅ Role-based access control (Admin, CHW, Household)
-* ✅ HTTPS + input validation for data safety
-* ✅ Ethical retention of expired medicine data for traceability
+*  Bias monitoring and explainable AI for fairness
+*  Role-based access control (Admin, CHW, Household)
+*  HTTPS + input validation for data safety
+*  Ethical retention of expired medicine data for traceability
 
 ---
 
-## 💡 **Future Enhancements**
+##  **Future Enhancements**
 
 * Push notifications for CHW pickup updates
 * Real-time CHW location tracking (map integration)
 * Multi-language support (Kinyarwanda, English, French)
-* SMS/USSD access for non-smartphone users
 * Offline mode with caching and service workers
 * Barcode scanning and appointment scheduling
 
 ---
 
-## 🤝 **Contributing**
+##  **Contributing**
 
 To contribute or deploy a production instance:
 
@@ -137,13 +141,13 @@ To contribute or deploy a production instance:
 
 ---
 
-## 📜 **License**
+##  **License**
 
 This project is for **educational and demonstration purposes** under an open license.
 
 ---
 
-## 📬 **Support & Contact**
+##  **Support & Contact**
 
 **Email:** [support@umutisafe.rw](mailto:support@umutisafe.rw)
 **GitHub Issues:** [UmutiSafe Frontend Repo](https://github.com/umutisafe/frontend)
