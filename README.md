@@ -11,7 +11,7 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
 
 ##  **Video demo**
 
-🔗 **Video:** [Umutisafe Demo Video](https://youtu.be/SrknWqU7nfs)
+🔗 **Video:** [Umutisafe Demo Video](https://youtu.be/-w50fIwAT-g)
 
 
 ---
