@@ -63,8 +63,6 @@ npm install
 npm run dev
 ```
 
-App runs at → **[http://localhost:5173](http://localhost:5173)**
-
 Build for production:
 
 ```bash
