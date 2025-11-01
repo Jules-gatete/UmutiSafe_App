@@ -250,9 +250,31 @@ export const medicinesAPI = {
       params.append('packaging_type', data.packagingType || data.packaging_type || '');
 
       const modelRoot = (await modelBaseURLPromise) || PREFERRED_MODEL;
-      const resp = await axios.post(`${modelRoot.replace(/\/$/, '')}/api/predict/text`, params.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      });
+      const url = `${modelRoot.replace(/\/$/, '')}/api/predict/text`;
+
+      // Some model servers accept JSON while others expect form-encoded fields.
+      // Try JSON first (friendly), then fall back to application/x-www-form-urlencoded.
+      let resp;
+      try {
+        resp = await axios.post(url, {
+          generic_name: params.get('generic_name'),
+          brand_name: params.get('brand_name'),
+          dosage_form: params.get('dosage_form'),
+          packaging_type: params.get('packaging_type')
+        }, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
+      } catch (jsonErr) {
+        // Try form-encoded as a fallback
+        try {
+          resp = await axios.post(url, params.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 15000
+          });
+        } catch (formErr) {
+          // rethrow the original JSON error for upstream handling but attach both errors
+          jsonErr.fallback = formErr;
+          throw jsonErr;
+        }
+      }
 
       // Map FastAPI response to the frontend expected shape used in AddDisposal.jsx
       const f = resp.data;
