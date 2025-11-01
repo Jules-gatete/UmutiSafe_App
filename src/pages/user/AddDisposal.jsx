@@ -207,15 +207,56 @@ export default function AddDisposal() {
       return;
     }
 
-    navigate('/user/chw-interaction', {
-      state: {
-        medicineName: `${formData.generic_name}${
-          formData.brand_name ? ` (${formData.brand_name})` : ''
-        }`,
-        disposalGuidance: prediction.disposal_guidance,
+    // Create the disposal first so we can pass disposalId to the pickup flow
+    (async () => {
+      setLoading(true);
+      setServerError(null);
+      const disposal = {
+        genericName: formData.generic_name,
+        brandName: formData.brand_name,
+        dosageForm: formData.dosage_form,
+        packagingType: formData.packaging_type,
+        predictedCategory: prediction.predicted_category,
         riskLevel: prediction.risk_level,
-      },
-    });
+        confidence: prediction.confidence,
+        disposalGuidance: prediction.disposal_guidance,
+        reason: 'user_initiated',
+      };
+
+      try {
+        let result;
+        if (imageFile) {
+          const payload = { ...disposal, file: imageFile };
+          result = await disposalsAPI.create(payload);
+        } else {
+          result = await disposalsAPI.create(disposal);
+        }
+
+        if (result && result.success) {
+          const createdId = result.data?.id || result.data?.data?.id || result?.data?.id || null;
+
+          navigate('/user/chw-interaction', {
+            state: {
+              medicineName: `${formData.generic_name}${
+                formData.brand_name ? ` (${formData.brand_name})` : ''
+              }`,
+              disposalGuidance: prediction.disposal_guidance,
+              riskLevel: prediction.risk_level,
+              disposalId: createdId
+            }
+          });
+        } else {
+          const msg = result?.error?.message || result?.error || 'Failed to save disposal before pickup request.';
+          setServerError(msg);
+        }
+      } catch (err) {
+        console.error('Error creating disposal before pickup request:', err);
+        const msg = err?.response?.data?.message || err?.message || 'Failed to save disposal. Please try again.';
+        setServerError(msg);
+      } finally {
+        setLoading(false);
+      }
+    })();
   };
 
   const handlePageSearch = async (q) => {
@@ -290,7 +331,7 @@ export default function AddDisposal() {
 
         {/* Manual entry form - inputs arranged in two columns */}
         <form onSubmit={handlePredictFromText} className="card">
-          <h2 className="text-xl font-bold mb-4">Option 2: Enter Details Manually</h2>
+          <h2 className="text-xl font-bold mb-4">Option 2: Enter medecine Details</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative">

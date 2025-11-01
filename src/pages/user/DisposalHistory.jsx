@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import useStablePolling from '../../hooks/useStablePolling';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Eye, Package, CheckCircle, Clock, AlertTriangle, Truck } from 'lucide-react';
 import Table from '../../components/Table';
@@ -13,41 +14,53 @@ export default function DisposalHistory() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [disposals, setDisposals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [serverError, setServerError] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchDisposals();
+  // apply filter from query params (e.g., ?filter=pending_review or ?filter=highRisk)
+  const params = new URLSearchParams(window.location.search);
+  const f = params.get('filter');
+  if (f) {
+    if (f === 'highRisk') applyCardFilter('highRisk');
+    else applyCardFilter(f);
+  }
 
-    // apply filter from query params (e.g., ?filter=pending_review or ?filter=highRisk)
-    const params = new URLSearchParams(window.location.search);
-    const f = params.get('filter');
-    if (f) {
-      if (f === 'highRisk') applyCardFilter('highRisk');
-      else applyCardFilter(f);
-    }
+  // Use centralized polling: fetchDisposals will be called with { background }
+  useStablePolling(async ({ background = false } = {}) => {
+    try {
+      if (background) setRefreshing(true);
+      else setInitialLoading(true);
 
-    // Auto-refresh every 10 seconds for real-time updates
-    const pollInterval = setInterval(() => {
-      fetchDisposals();
-    }, 10000); // Poll every 10 seconds
-
-    // Refresh data when page becomes visible
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchDisposals();
+      setServerError('');
+      const response = await disposalsAPI.getAll();
+      if (response && response.success) {
+        if (background) {
+          try {
+            const existing = JSON.stringify(disposals || []);
+            const incoming = JSON.stringify(response.data || []);
+            if (existing !== incoming) setDisposals(response.data);
+          } catch (e) {
+            setDisposals(response.data);
+          }
+        } else {
+          setDisposals(response.data);
+        }
+      } else {
+        const msg = response?.error?.message || response?.error || 'Failed to load disposals from server';
+        setServerError(msg);
+        if (!background) setDisposals([]);
       }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+    } catch (err) {
+      console.error('Error fetching disposals:', err);
+      setError('Failed to load disposal history');
+    } finally {
+      if (background) setRefreshing(false);
+      else setInitialLoading(false);
+    }
+  }, 10000);
 
   const fetchDisposals = async () => {
     try {
@@ -181,7 +194,7 @@ export default function DisposalHistory() {
     },
   ];
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="p-4 lg:p-8 pb-24 lg:pb-8">
         <div className="flex items-center justify-center h-64">

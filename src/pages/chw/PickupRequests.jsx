@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
+import useStablePolling from '../../hooks/useStablePolling';
 import { Link } from 'react-router-dom';
 import { MapPin, Calendar, Eye } from 'lucide-react';
 import Table from '../../components/Table';
@@ -10,7 +11,8 @@ import { chwAPI, pickupsAPI } from '../../services/api';
 
 export default function PickupRequests() {
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [reviewStatus, setReviewStatus] = useState('');
@@ -19,34 +21,35 @@ export default function PickupRequests() {
   const [query, setQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchPickups();
+  // Centralized polling hook; fetchPickups will be invoked with { background }
+  useStablePolling(async ({ background = false } = {}) => {
+    try {
+      if (background) setRefreshing(true);
+      else setInitialLoading(true);
 
-    // Auto-refresh every 10 seconds for real-time updates
-    const pollInterval = setInterval(() => {
-      fetchPickups();
-    }, 10000); // Poll every 10 seconds
+      const result = await chwAPI.getPickups();
 
-    // Auto-refresh when page becomes visible
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchPickups();
+      if (result?.success) {
+        if (background) {
+          try {
+            const existing = JSON.stringify(requests || []);
+            const incoming = JSON.stringify(result.data || []);
+            if (existing !== incoming) setRequests(result.data);
+          } catch (e) {
+            setRequests(result.data);
+          }
+        } else {
+          setRequests(result.data);
+        }
       }
-    };
-
-    const handleFocus = () => {
-      fetchPickups();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
+    } catch (err) {
+      console.error('Error fetching pickups:', err);
+      setError('Failed to load pickup requests');
+    } finally {
+      if (background) setRefreshing(false);
+      else setInitialLoading(false);
+    }
+  }, 10000);
 
   const fetchPickups = async () => {
     try {
@@ -181,7 +184,7 @@ export default function PickupRequests() {
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="p-4 lg:p-8 pb-24 lg:pb-8">
         <div className="flex items-center justify-center h-64">

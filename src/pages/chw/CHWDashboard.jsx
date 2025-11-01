@@ -8,25 +8,29 @@ import { chwAPI, pickupsAPI } from '../../services/api';
 export default function CHWDashboard() {
   const [requests, setRequests] = useState([]);
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Differentiate initial load from background refresh to avoid UI reload flicker
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
-    fetchData();
+    // initial load
+    fetchData({ background: false });
 
-    // Auto-refresh every 10 seconds for real-time updates
+    // Auto-refresh in background
     const pollInterval = setInterval(() => {
-      fetchData();
-    }, 10000); // Poll every 10 seconds
-
-    // Refresh data when page becomes visible
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchData();
+      // Only refresh when the user is actively viewing the tab to avoid
+      // repeated full UI updates while the user is working elsewhere.
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        fetchData({ background: true });
       }
+    }, 10000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchData({ background: true });
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -37,25 +41,49 @@ export default function CHWDashboard() {
     };
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (background) setRefreshing(true);
+      else setInitialLoading(true);
+
       const [dashboardResult, pickupsResult] = await Promise.all([
         chwAPI.getDashboard(),
         chwAPI.getPickups() // Use chwAPI.getPickups() instead of pickupsAPI.getAll()
       ]);
 
-      if (dashboardResult.success) {
-        setStats(dashboardResult.data);
+      if (dashboardResult?.success) {
+        if (background) {
+          try {
+            const existingStats = JSON.stringify(stats || {});
+            const incomingStats = JSON.stringify(dashboardResult.data || {});
+            if (existingStats !== incomingStats) setStats(dashboardResult.data);
+          } catch (e) {
+            setStats(dashboardResult.data);
+          }
+        } else {
+          setStats(dashboardResult.data);
+        }
       }
-      if (pickupsResult.success) {
-        setRequests(pickupsResult.data);
+
+      if (pickupsResult?.success) {
+        if (background) {
+          try {
+            const existing = JSON.stringify(requests || []);
+            const incoming = JSON.stringify(pickupsResult.data || []);
+            if (existing !== incoming) setRequests(pickupsResult.data);
+          } catch (e) {
+            setRequests(pickupsResult.data);
+          }
+        } else {
+          setRequests(pickupsResult.data);
+        }
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError('Failed to load dashboard data');
     } finally {
-      setLoading(false);
+      if (background) setRefreshing(false);
+      else setInitialLoading(false);
     }
   };
 
@@ -74,7 +102,7 @@ export default function CHWDashboard() {
 
   const recentRequests = requests.slice(0, 5);
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="p-4 lg:p-8 pb-24 lg:pb-8">
         <div className="flex items-center justify-center h-64">

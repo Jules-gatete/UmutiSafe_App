@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import useStablePolling from '../../hooks/useStablePolling';
 import { Link, useLocation } from 'react-router-dom';
 import { PlusCircle, History, BookOpen, Package, Clock, Truck, CheckCircle, AlertTriangle } from 'lucide-react';
 import StatCard from '../../components/StatCard';
@@ -7,43 +8,65 @@ import { disposalsAPI, pickupsAPI } from '../../services/api';
 export default function Dashboard() {
   const [disposals, setDisposals] = useState([]);
   const [pickups, setPickups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Use initialLoading/refreshing so background polls don't show big loader
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  useEffect(() => {
-    fetchData();
+  // Use centralized polling hook; fetchData will be invoked with { background }
+  useStablePolling(async ({ background = false } = {}) => {
+    try {
+      if (background) setRefreshing(true);
+      else setInitialLoading(true);
 
-    // Auto-refresh every 10 seconds for real-time updates
-    const pollInterval = setInterval(() => {
-      fetchData();
-    }, 10000); // Poll every 10 seconds
+      const [disposalsResult, pickupsResult] = await Promise.all([
+        disposalsAPI.getAll(),
+        pickupsAPI.getAll()
+      ]);
 
-    // Refresh data when page becomes visible (user switches back to tab or navigates to page)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchData();
+      // Update disposals only when changed during background refresh
+      if (disposalsResult?.success) {
+        if (background) {
+          try {
+            const existing = JSON.stringify(disposals || []);
+            const incoming = JSON.stringify(disposalsResult.data || []);
+            if (existing !== incoming) setDisposals(disposalsResult.data);
+          } catch (e) {
+            setDisposals(disposalsResult.data);
+          }
+        } else {
+          setDisposals(disposalsResult.data);
+        }
       }
-    };
 
-    const handleFocus = () => {
-      fetchData();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
+      // Update pickups only when changed during background refresh
+      if (pickupsResult?.success) {
+        if (background) {
+          try {
+            const existingP = JSON.stringify(pickups || []);
+            const incomingP = JSON.stringify(pickupsResult.data || []);
+            if (existingP !== incomingP) setPickups(pickupsResult.data);
+          } catch (e) {
+            setPickups(pickupsResult.data);
+          }
+        } else {
+          setPickups(pickupsResult.data);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      if (background) setRefreshing(false);
+      else setInitialLoading(false);
+    }
+  }, 10000);
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      setInitialLoading(true);
       const [disposalsResult, pickupsResult] = await Promise.all([
         disposalsAPI.getAll(),
         pickupsAPI.getAll()
@@ -71,7 +94,7 @@ export default function Dashboard() {
       console.error('Error fetching data:', err);
       setError('Failed to load dashboard data');
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -109,7 +132,7 @@ export default function Dashboard() {
     pickup_requested: 'info',
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="p-4 lg:p-8 pb-24 lg:pb-8">
         <div className="flex items-center justify-center h-64">

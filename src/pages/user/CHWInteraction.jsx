@@ -15,23 +15,31 @@ export default function CHWInteraction() {
   const [query, setQuery] = useState('');
   const [chws, setChws] = useState([]);
   const [pickups, setPickups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Two loading flags: initialLoading controls the first full-screen loader,
+  // refreshing indicates background refreshes (polling) so we avoid a full-page reload feel.
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
-    fetchData();
+    // Initial load should show the full-screen loader
+    fetchData({ background: false });
 
-    // Auto-refresh every 10 seconds for real-time updates
+    // Auto-refresh every 10 seconds for real-time updates (background)
     const pollInterval = setInterval(() => {
-      fetchData();
+      // Only poll when the tab is visible and the window has focus to avoid
+      // background updates that disrupt the user experience.
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        fetchData({ background: true });
+      }
     }, 10000); // Poll every 10 seconds
 
-    // Refresh data when page becomes visible
+    // Refresh data when page becomes visible (background)
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        fetchData();
+        fetchData({ background: true });
       }
     };
 
@@ -43,25 +51,54 @@ export default function CHWInteraction() {
     };
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      if (background) {
+        setRefreshing(true);
+      } else {
+        setInitialLoading(true);
+      }
+
       const [chwsResult, pickupsResult] = await Promise.all([
         chwAPI.getAvailable(),
         pickupsAPI.getAll()
       ]);
 
-      if (chwsResult.success) {
-        setChws(chwsResult.data);
+      // When running as a background refresh, avoid clobbering state and
+      // triggering re-renders if the data hasn't changed.
+      if (chwsResult?.success) {
+        if (background) {
+          try {
+            const existing = JSON.stringify(chws || []);
+            const incoming = JSON.stringify(chwsResult.data || []);
+            if (existing !== incoming) setChws(chwsResult.data);
+          } catch (e) {
+            setChws(chwsResult.data);
+          }
+        } else {
+          setChws(chwsResult.data);
+        }
       }
-      if (pickupsResult.success) {
-        setPickups(pickupsResult.data);
+
+      if (pickupsResult?.success) {
+        if (background) {
+          try {
+            const existingP = JSON.stringify(pickups || []);
+            const incomingP = JSON.stringify(pickupsResult.data || []);
+            if (existingP !== incomingP) setPickups(pickupsResult.data);
+          } catch (e) {
+            setPickups(pickupsResult.data);
+          }
+        } else {
+          setPickups(pickupsResult.data);
+        }
       }
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to load CHW data');
     } finally {
-      setLoading(false);
+      if (background) setRefreshing(false);
+      else setInitialLoading(false);
     }
   };
 
@@ -133,13 +170,14 @@ export default function CHWInteraction() {
     }
 
     const request = {
-      chwId: selectedCHW.id,
+      chwId: selectedCHW.id || selectedCHW.userId,
       medicineName: formData.medicineName,
       disposalGuidance: formData.disposalGuidance,
       reason: formData.reason,
       pickupLocation: formData.pickupLocation,
       preferredTime: formData.preferredTime,
       consentGiven: formData.consent
+      , disposalId: prefillData.disposalId || null
     };
 
     try {
@@ -166,19 +204,31 @@ export default function CHWInteraction() {
 
         // If we navigated here from a disposal, attach the pickup to that disposal
         try {
-          const disposalId = prefillData.disposalId;
-          const pickupId = response.data?.id || response.data?.data?.id || response?.data?.id || null;
-          if (disposalId && pickupId) {
-            // update disposal status and link pickupRequestId
-            await disposalsAPI.update(disposalId, { status: 'pickup_requested', pickupRequestId: pickupId });
-          }
+            const disposalId = prefillData.disposalId;
+            const pickupId = response.data?.id || response.data?.data?.id || response?.data?.id || null;
+            if (disposalId && pickupId) {
+              // If caller came from a disposal, attempt to link it on the server
+              // Prefer atomic linking via including disposalId in the create request —
+              // but if we didn't include it, update the disposal here as a best-effort fallback.
+              try {
+                await disposalsAPI.update(disposalId, { status: 'pickup_requested', pickupRequestId: pickupId });
+              } catch (uerr) {
+                console.warn('Failed to attach pickup to disposal (post-create update)', uerr);
+              }
+            }
         } catch (attachErr) {
           console.warn('Failed to attach pickup to disposal', attachErr);
         }
       }
     } catch (err) {
       console.error('Error submitting pickup request:', err);
-      alert('Failed to submit pickup request. Please try again.');
+      // Surface backend error messages if available
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.response?.data?.detail;
+      if (serverMsg) {
+        alert(`Failed to submit pickup request: ${serverMsg}`);
+      } else {
+        alert('Failed to submit pickup request. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -241,7 +291,8 @@ export default function CHWInteraction() {
     },
   ];
 
-  if (loading) {
+  if (initialLoading) {
+    // Show full-screen loader only on first load to avoid the app feeling like it "reloads"
     return (
       <div className="p-4 lg:p-8 pb-24 lg:pb-8">
         <div className="flex items-center justify-center h-64">
