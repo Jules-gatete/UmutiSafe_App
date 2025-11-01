@@ -1,31 +1,142 @@
 import axios from 'axios';
 
-// API Base URL (main backend)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+/**
+ * Runtime backend selector:
+ *  - Try preferredLocal = 'http://localhost:5000' first (short timeout).
+ *  - If health check works, use it; otherwise fallback to REMOTE_BACKEND.
+ */
+const REMOTE_BACKEND = 'https://umutisafe-backend.onrender.com';
+const PREFERRED_LOCAL = 'http://localhost:5000';
+const HEALTH_PATH = '/api/health';
+const HEALTH_TIMEOUT = 1200; // ms
+
+async function probeBase(baseUrl) {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), HEALTH_TIMEOUT);
+
+    const res = await fetch(baseUrl + HEALTH_PATH, {
+      method: 'GET',
+      mode: 'cors',
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return res && res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+let baseURLPromise = (async () => {
+  if (await probeBase(PREFERRED_LOCAL)) {
+    console.info('Using local backend:', PREFERRED_LOCAL);
+    return PREFERRED_LOCAL;
+  }
+  console.info('Falling back to remote backend:', REMOTE_BACKEND);
+  return REMOTE_BACKEND;
+})();
+
+export async function createApiClient() {
+  const base = await baseURLPromise;
+  const client = axios.create({
+    baseURL: base,
+    withCredentials: true, // keep cookies if your backend uses them
+    timeout: 10000,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return client;
+}
+
+// API Base URL (main backend) - if provided at build time it will be used as-is.
+// Otherwise we will pick at runtime (local first, then remote) via the probe above.
+const API_BASE_URL = import.meta.env.VITE_API_URL || null;
 
 // Model API (FastAPI) - separate backend serving ML model
-const MODEL_API_URL = import.meta.env.VITE_MODEL_API_URL || 'http://localhost:8000';
+const MODEL_API_URL = import.meta.env.VITE_MODEL_API_URL || null;
+const PREFERRED_MODEL = 'http://localhost:8000';
+const MODEL_HEALTH_PATH = '/api/health';
+const MODEL_HEALTH_TIMEOUT = 1200;
 
-// Create axios instance
+
+async function probeModel(baseUrl) {
+  // Try a few common health endpoints so the probe works even if the model
+  // server exposes a different path (some projects use /health or /)
+  const candidates = ['/api/health', '/health', '/'];
+  for (const p of candidates) {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), MODEL_HEALTH_TIMEOUT);
+      const url = baseUrl.replace(/\/$/, '') + p;
+      const res = await fetch(url, { method: 'GET', mode: 'cors', signal: controller.signal });
+      clearTimeout(id);
+      if (res && res.ok) {
+        console.info(`Model probe: ${url} OK`);
+        return true;
+      }
+    } catch (err) {
+      // ignore and try next candidate
+    }
+  }
+  return false;
+}
+
+// runtime selection for the model service (prefer local)
+let modelBaseURLPromise = (async () => {
+  const probe = await probeModel(PREFERRED_MODEL).catch(() => false);
+  if (probe) {
+    console.info('Using local model service:', PREFERRED_MODEL);
+    return PREFERRED_MODEL;
+  }
+  if (MODEL_API_URL) {
+    console.info('Falling back to configured model URL:', MODEL_API_URL);
+    return MODEL_API_URL.replace(/\/$/, '');
+  }
+  // last resort: remote placeholder or empty
+  console.info('No model service configured; using', PREFERRED_MODEL);
+  return PREFERRED_MODEL;
+})();
+
+// Create axios instance WITHOUT a static baseURL — we'll set it at request time
+// so the app can pick the best backend (local first, then remote) at runtime.
 const api = axios.create({
-  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
-// Request interceptor to add auth token
+// Request interceptor: ensure baseURL is set (runtime selection) and attach auth token
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    // If a baseURL was explicitly set on the request, keep it.
+    if (!config.baseURL) {
+      // Prefer the runtime-detected base (local first, then remote) so
+      // the deployed static app will use a local backend when available.
+      // Fall back to the build-time API URL only if the runtime probe fails.
+      const detected = await baseURLPromise.catch(() => null);
+      const chosenRoot = detected || API_BASE_URL || PREFERRED_LOCAL;
+
+      // If chosenRoot already includes an /api suffix, don't append it again
+      if (/\/api\/?$/.test(chosenRoot)) {
+        config.baseURL = chosenRoot.replace(/\/$/, '');
+      } else {
+        config.baseURL = chosenRoot.replace(/\/$/, '') + '/api';
+      }
     }
+
+    // Attach token if present
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (err) {
+      // localStorage might throw in some environments; ignore safely
+    }
+
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor to handle errors
@@ -138,7 +249,8 @@ export const medicinesAPI = {
       params.append('dosage_form', data.dosageForm || data.dosage_form || '');
       params.append('packaging_type', data.packagingType || data.packaging_type || '');
 
-      const resp = await axios.post(`${MODEL_API_URL}/api/predict/text`, params.toString(), {
+      const modelRoot = (await modelBaseURLPromise) || PREFERRED_MODEL;
+      const resp = await axios.post(`${modelRoot.replace(/\/$/, '')}/api/predict/text`, params.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
 
@@ -164,8 +276,13 @@ export const medicinesAPI = {
 
       return { success: true, data: mapped };
     } catch (err) {
-      console.error('predictFromText error', err?.response?.data || err.message || err);
-      return { success: false, error: err?.response?.data || err.message };
+      // Normalize error so UI doesn't receive raw objects (e.g. { detail: '...' })
+      const serverData = err?.response?.data;
+      const errorMsg = typeof serverData === 'string'
+        ? serverData
+        : (serverData && serverData.detail) || JSON.stringify(serverData) || err.message || 'Unknown error';
+      console.error('predictFromText error', errorMsg);
+      return { success: false, error: errorMsg };
     }
   },
   
@@ -175,7 +292,8 @@ export const medicinesAPI = {
     formData.append('file', imageFile);
 
     try {
-      const resp = await axios.post(`${MODEL_API_URL}/api/predict/image`, formData, {
+      const modelRoot = (await modelBaseURLPromise) || PREFERRED_MODEL;
+      const resp = await axios.post(`${modelRoot.replace(/\/$/, '')}/api/predict/image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -200,8 +318,12 @@ export const medicinesAPI = {
 
       return { success: true, data: mapped };
     } catch (err) {
-      console.error('predictFromImage error', err?.response?.data || err.message || err);
-      return { success: false, error: err?.response?.data || err.message };
+      const serverData = err?.response?.data;
+      const errorMsg = typeof serverData === 'string'
+        ? serverData
+        : (serverData && serverData.detail) || JSON.stringify(serverData) || err.message || 'Unknown error';
+      console.error('predictFromImage error', errorMsg);
+      return { success: false, error: errorMsg };
     }
   }
 };

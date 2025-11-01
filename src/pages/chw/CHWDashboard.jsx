@@ -196,20 +196,33 @@ export default function CHWDashboard() {
         )}
       </div>
 
-      {/* render filtered requests */}
-      <div>
-        {filtered.map(r => (
-          <div key={r.id} className="card mb-3">
-            <div className="flex justify-between">
-              <div>
-                <div className="font-semibold">{r.patientName}</div>
-                <div className="text-sm text-gray-600">{r.address}</div>
-              </div>
-              <div className="text-sm">{r.status}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* render filtered requests only when a search query exists to avoid
+          showing duplicate or empty rows when no filter is applied */}
+      {query ? (
+        <div>
+          {filtered.length === 0 ? (
+            <div className="text-center py-6 text-gray-600 dark:text-gray-400">No pickup requests match your search.</div>
+          ) : (
+            filtered.map((r) => {
+              // defensive: ensure we have an id and at least one displayable field
+              const key = r.id || r.pickupRequestId || JSON.stringify(r);
+              const title = r.patientName || r.userName || r.requesterName || r.medicineName || 'Unknown';
+              const subtitle = r.address || r.pickupLocation || r.location || '';
+              return (
+                <div key={key} className="card mb-3">
+                  <div className="flex justify-between">
+                    <div>
+                      <div className="font-semibold">{title}</div>
+                      {subtitle && <div className="text-sm text-gray-600">{subtitle}</div>}
+                    </div>
+                    <div className="text-sm">{(r.status || '').toString()}</div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
