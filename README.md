@@ -1,8 +1,3 @@
-Perfect — here’s an **updated, concise, and submission-ready README** that merges the best of both versions, adds **live/project links**, clarifies **backend API usage**, and stays professional for academic or production documentation.
-Everything is cleanly ordered, minimal, and easy to follow.
-
----
-
 # 🌿 **UmutiSafe – Medicine Disposal & CHW Integration Platform**
 
 **UmutiSafe** is an AI-powered web platform that helps households in Rwanda safely dispose of unused or expired medicines while connecting them with **Community Health Workers (CHWs)**.
