@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Upload, Database, Search, Plus, Edit, Trash2 } from 'lucide-react';
 import Table from '../../components/Table';
 import SearchBar from '../../components/SearchBar';
@@ -29,6 +29,7 @@ export default function MedicinesRegistry() {
     fdaApproved: true,
     disposalInstructions: ''
   });
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchMedicines();
@@ -113,8 +114,13 @@ export default function MedicinesRegistry() {
       const response = await medicinesAPI.uploadCSV(formData);
 
       if (response.success) {
-        alert('CSV uploaded successfully!');
+        const summary = response.data || {};
+        const detail = `Created: ${summary.created || 0}\nUpdated: ${summary.updated || 0}\nSkipped: ${summary.skipped || 0}`;
+        alert(`CSV uploaded successfully!\n\n${detail}`);
         setCsvFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         fetchMedicines(); // Refresh the list
       }
     } catch (err) {
@@ -255,14 +261,19 @@ export default function MedicinesRegistry() {
                 <input
                   type="file"
                   accept=".csv"
+                  ref={fileInputRef}
                   onChange={handleFileChange}
                   className="hidden"
                 />
                 {csvFile ? csvFile.name : 'Choose CSV File'}
               </label>
               {csvFile && (
-                <button onClick={handleUpload} className="btn-outline border-white text-white hover:bg-white hover:text-primary-blue">
-                  Upload & Process
+                <button
+                  onClick={handleUpload}
+                  className="btn-outline border-white text-white hover:bg-white hover:text-primary-blue"
+                  disabled={uploading}
+                >
+                  {uploading ? 'Uploading…' : 'Upload & Process'}
                 </button>
               )}
             </div>

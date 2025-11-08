@@ -6,8 +6,18 @@ export default function SearchBar({ onSearch, placeholder = 'Search medicines, g
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (onSearch && query.trim()) {
+
+    if (onSearch) {
       onSearch(query.trim());
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    if (onSearch && value.trim().length === 0) {
+      onSearch('');
     }
   };
 
@@ -21,7 +31,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search medicines, g
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={handleInputChange}
           placeholder={placeholder}
           className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-text-dark dark:text-text-light focus:outline-none focus:ring-2 focus:ring-accent-cta focus:border-accent-cta transition-all duration-200"
           aria-label={placeholder}

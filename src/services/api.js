@@ -52,8 +52,15 @@ export async function createApiClient() {
 const API_BASE_URL = import.meta.env.VITE_API_URL || null;
 
 // Model API (FastAPI) - separate backend serving ML model
-const MODEL_API_URL = import.meta.env.VITE_MODEL_API_URL || null;
 const PREFERRED_MODEL = 'http://localhost:8000';
+const DEFAULT_REMOTE_MODEL = 'https://plankton-app-2c2ae.ondigitalocean.app';
+
+let configuredModelUrl = import.meta.env.VITE_MODEL_API_URL;
+if (configuredModelUrl && typeof configuredModelUrl === 'string') {
+  configuredModelUrl = configuredModelUrl.trim().replace(/\/$/, '');
+}
+
+const MODEL_API_URL = configuredModelUrl || DEFAULT_REMOTE_MODEL;
 const MODEL_HEALTH_PATH = '/api/health';
 const MODEL_HEALTH_TIMEOUT = 1200;
 
@@ -80,20 +87,46 @@ async function probeModel(baseUrl) {
   return false;
 }
 
+function mapModelPredictionResponse(raw = {}) {
+  return {
+    success: raw.success !== false,
+    data: {
+      medicineName: raw.medicine_name || null,
+      inputType: raw.input_type || null,
+      predictions: raw.predictions || {},
+      analysis: raw.analysis || '',
+      messages: Array.isArray(raw.messages)
+        ? raw.messages
+        : raw.messages
+        ? [raw.messages]
+        : [],
+      errors: Array.isArray(raw.errors)
+        ? raw.errors
+        : raw.errors
+        ? [raw.errors]
+        : [],
+      raw
+    }
+  };
+}
+
 // runtime selection for the model service (prefer local)
 let modelBaseURLPromise = (async () => {
-  const probe = await probeModel(PREFERRED_MODEL).catch(() => false);
-  if (probe) {
+  const localAvailable = await probeModel(PREFERRED_MODEL).catch(() => false);
+  if (localAvailable) {
     console.info('Using local model service:', PREFERRED_MODEL);
     return PREFERRED_MODEL;
   }
-  if (MODEL_API_URL) {
-    console.info('Falling back to configured model URL:', MODEL_API_URL);
-    return MODEL_API_URL.replace(/\/$/, '');
+
+  const remoteRoot = MODEL_API_URL ? MODEL_API_URL.replace(/\/$/, '') : DEFAULT_REMOTE_MODEL;
+  const remoteAvailable = await probeModel(remoteRoot).catch(() => false);
+  if (remoteAvailable) {
+    console.info('Using remote model service:', remoteRoot);
+    return remoteRoot;
   }
-  // last resort: remote placeholder or empty
-  console.info('No model service configured; using', PREFERRED_MODEL);
-  return PREFERRED_MODEL;
+
+  console.warn('Neither local nor remote model endpoints responded to health checks. Proceeding with remote URL anyway.');
+  return remoteRoot;
 })();
 
 // Create axios instance WITHOUT a static baseURL — we'll set it at request time
@@ -238,71 +271,63 @@ export const medicinesAPI = {
     const response = await api.delete(`/medicines/${id}`);
     return response.data;
   },
+
+  // Upload medicines CSV (Admin only)
+  uploadCSV: async (formData) => {
+    const response = await api.post('/medicines/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
   
   // Predict medicine disposal from text
-  predictFromText: async (data) => {
-    // FastAPI expects application/x-www-form-urlencoded form fields
+  predictFromText: async (data = {}) => {
     try {
-      const params = new URLSearchParams();
-      params.append('generic_name', data.genericName || data.generic_name || '');
-      params.append('brand_name', data.brandName || data.brand_name || '');
-      params.append('dosage_form', data.dosageForm || data.dosage_form || '');
-      params.append('packaging_type', data.packagingType || data.packaging_type || '');
+      const genericName = (data.genericName || data.generic_name || '').trim();
+      if (!genericName) {
+        return { success: false, error: 'Please provide a generic medicine name before requesting a prediction.' };
+      }
 
-      const modelRoot = (await modelBaseURLPromise) || PREFERRED_MODEL;
-      const url = `${modelRoot.replace(/\/$/, '')}/api/predict/text`;
+      const modelRoot = (await modelBaseURLPromise) || MODEL_API_URL || PREFERRED_MODEL;
+      const root = modelRoot.replace(/\/$/, '');
+      const requestBody = { generic_name: genericName, medicine_name: genericName };
+      const endpoints = ['/api/predict/text', '/predict/text'];
 
-      // Some model servers accept JSON while others expect form-encoded fields.
-      // Try JSON first (friendly), then fall back to application/x-www-form-urlencoded.
-      let resp;
-      try {
-        resp = await axios.post(url, {
-          generic_name: params.get('generic_name'),
-          brand_name: params.get('brand_name'),
-          dosage_form: params.get('dosage_form'),
-          packaging_type: params.get('packaging_type')
-        }, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
-      } catch (jsonErr) {
-        // Try form-encoded as a fallback
+      let response;
+      let lastError;
+      for (const path of endpoints) {
+        const url = `${root}${path}`;
         try {
-          resp = await axios.post(url, params.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 15000
+          response = await axios.post(url, requestBody, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 20000
           });
-        } catch (formErr) {
-          // rethrow the original JSON error for upstream handling but attach both errors
-          jsonErr.fallback = formErr;
-          throw jsonErr;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (error?.response?.status === 404 || error?.response?.status === 405) {
+            continue;
+          }
+          break;
         }
       }
 
-      // Map FastAPI response to the frontend expected shape used in AddDisposal.jsx
-      const f = resp.data;
-      const mapped = {
-        success: !!f.success,
-        ocr_text: {
-          medicine_name: f.ocr_info?.extracted_info?.generic_name || f.medicine_info?.generic_name || '',
-          brand_name: f.ocr_info?.extracted_info?.brand_name || f.medicine_info?.brand_name || ''
-        },
-        predicted_category: f.predictions?.disposal_category || f.safety_guidance?.category_name || '',
-        risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
-        confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
-        disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
-        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || '',
-        // Pass through raw blocks so UI can render detailed guidance and OCR metadata
-        ocr_info: f.ocr_info || null,
-        medicine_info: f.medicine_info || null,
-        predictions: f.predictions || null,
-        safety_guidance: f.safety_guidance || null
-      };
+      if (!response) {
+        throw lastError || new Error('Prediction request failed');
+      }
 
-      return { success: true, data: mapped };
+      const mapped = mapModelPredictionResponse(response.data);
+      if (mapped.success) {
+        return mapped;
+      }
+
+      const fallbackError = typeof response.data === 'string' ? response.data : 'Prediction failed';
+      return { success: false, error: fallbackError };
     } catch (err) {
-      // Normalize error so UI doesn't receive raw objects (e.g. { detail: '...' })
       const serverData = err?.response?.data;
       const errorMsg = typeof serverData === 'string'
         ? serverData
-        : (serverData && serverData.detail) || JSON.stringify(serverData) || err.message || 'Unknown error';
+        : (serverData && (serverData.detail || serverData.message)) || err.message || 'Unknown error';
       console.error('predictFromText error', errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -310,40 +335,52 @@ export const medicinesAPI = {
   
   // Predict medicine disposal from image
   predictFromImage: async (imageFile) => {
-    const formData = new FormData();
-    formData.append('file', imageFile);
+    if (!imageFile) {
+      return { success: false, error: 'Please select an image before requesting a prediction.' };
+    }
 
     try {
-      const modelRoot = (await modelBaseURLPromise) || PREFERRED_MODEL;
-      const resp = await axios.post(`${modelRoot.replace(/\/$/, '')}/api/predict/image`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const modelRoot = (await modelBaseURLPromise) || MODEL_API_URL || PREFERRED_MODEL;
+      const root = modelRoot.replace(/\/$/, '');
+      const formData = new FormData();
+      formData.append('file', imageFile);
 
-      const f = resp.data;
-      const mapped = {
-        success: !!f.success,
-        ocr_text: {
-          medicine_name: f.ocr_info?.extracted_info?.generic_name || f.medicine_info?.generic_name || '',
-          brand_name: f.ocr_info?.extracted_info?.brand_name || f.medicine_info?.brand_name || ''
-        },
-        predicted_category: f.predictions?.disposal_category || f.safety_guidance?.category_name || '',
-        risk_level: f.predictions?.risk_level || f.safety_guidance?.risk_level || '',
-        confidence: typeof f.predictions?.confidence === 'number' ? f.predictions.confidence : (f.predictions?.all_probabilities?.['1'] || 0),
-        disposal_guidance: f.safety_guidance?.procedure || f.safety_guidance?.prohibitions || '',
-        safety_notes: f.safety_guidance?.special_instructions || f.safety_guidance?.risks || '',
-        // Pass through raw blocks so UI can render detailed guidance and OCR metadata
-        ocr_info: f.ocr_info || null,
-        medicine_info: f.medicine_info || null,
-        predictions: f.predictions || null,
-        safety_guidance: f.safety_guidance || null
-      };
+      const endpoints = ['/api/predict/image', '/predict/image'];
+      let response;
+      let lastError;
 
-      return { success: true, data: mapped };
+      for (const path of endpoints) {
+        const url = `${root}${path}`;
+        try {
+          response = await axios.post(url, formData, {
+            timeout: 30000
+          });
+          break;
+        } catch (error) {
+          lastError = error;
+          if (error?.response?.status === 404 || error?.response?.status === 405) {
+            continue;
+          }
+          break;
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error('Image prediction request failed');
+      }
+
+      const mapped = mapModelPredictionResponse(response.data);
+      if (mapped.success) {
+        return mapped;
+      }
+
+      const fallbackError = typeof response.data === 'string' ? response.data : 'Image prediction failed';
+      return { success: false, error: fallbackError };
     } catch (err) {
       const serverData = err?.response?.data;
       const errorMsg = typeof serverData === 'string'
         ? serverData
-        : (serverData && serverData.detail) || JSON.stringify(serverData) || err.message || 'Unknown error';
+        : (serverData && (serverData.detail || serverData.message)) || err.message || 'Unknown error';
       console.error('predictFromImage error', errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -370,10 +407,23 @@ export const disposalsAPI = {
     // If there's a file (image) attached, send multipart/form-data
     if (disposalData.file) {
       const fd = new FormData();
-      // append fields
-      Object.keys(disposalData).forEach((k) => {
-        if (k === 'file') return fd.append('image', disposalData.file);
-        if (disposalData[k] !== undefined && disposalData[k] !== null) fd.append(k, disposalData[k]);
+      Object.entries(disposalData).forEach(([key, value]) => {
+        if (key === 'file') {
+          fd.append('image', disposalData.file);
+          return;
+        }
+        if (value === undefined || value === null) {
+          return;
+        }
+        if (value instanceof Blob || value instanceof File) {
+          fd.append(key, value);
+          return;
+        }
+        if (typeof value === 'object') {
+          fd.append(key, JSON.stringify(value));
+          return;
+        }
+        fd.append(key, value);
       });
 
       const response = await api.post('/disposals', fd, {

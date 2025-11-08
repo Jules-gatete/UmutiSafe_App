@@ -4,9 +4,16 @@ import Input from '../../components/FormFields/Input';
 import { chwAPI, authAPI } from '../../services/api';
 
 export default function CHWProfile() {
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+
   const [isEditing, setIsEditing] = useState(false);
-  const [availability, setAvailability] = useState('available');
-  const [profileData, setProfileData] = useState({ name: '', email: '', phone: '', sector: '' });
+  const [availability, setAvailability] = useState(storedUser.availability || 'available');
+  const [profileData, setProfileData] = useState({
+    name: storedUser.name || '',
+    email: storedUser.email || '',
+    phone: storedUser.phone || '',
+    sector: storedUser.sector || ''
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -16,8 +23,6 @@ export default function CHWProfile() {
 
   // pickups assigned to this CHW (for listing or stats)
   const [pickups, setPickups] = useState([]);
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   useEffect(() => {
     fetchData();
@@ -42,6 +47,7 @@ export default function CHWProfile() {
         // update local storage and local state
         localStorage.setItem('user', JSON.stringify(me));
         setProfileData({ name: me.name || '', email: me.email || '', phone: me.phone || '', sector: me.sector || '' });
+        setAvailability(me.availability || 'available');
       }
 
       if (dashboardResp?.success) {
@@ -92,13 +98,30 @@ export default function CHWProfile() {
   };
 
   const handleAvailabilityChange = async (value) => {
+    const previous = availability;
     setAvailability(value);
     try {
-      await chwAPI.updateAvailability(value);
+      const response = await chwAPI.updateAvailability(value);
+
+      if (!response?.success) {
+        throw new Error(response?.message || 'Failed to update availability');
+      }
+
+      const updatedAvailability = response.data?.availability || value;
+      setAvailability(updatedAvailability);
+
+      const updatedUser = {
+        ...JSON.parse(localStorage.getItem('user') || '{}'),
+        availability: updatedAvailability
+      };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+
       setAvailabilitySuccessMsg('Availability updated');
       setTimeout(() => setAvailabilitySuccessMsg(''), 3000);
     } catch (err) {
       console.error('Failed to update availability', err);
+      setAvailability(previous);
+      alert('Failed to update availability. Please try again.');
     }
   };
 
@@ -139,7 +162,7 @@ export default function CHWProfile() {
             >
               <option value="available">Available</option>
               <option value="busy">Busy</option>
-              <option value="off_duty">Off Duty</option>
+              <option value="offline">Offline</option>
             </select>
           </div>
 

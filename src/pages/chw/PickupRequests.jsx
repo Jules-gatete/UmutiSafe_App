@@ -53,7 +53,7 @@ export default function PickupRequests() {
 
   const fetchPickups = async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
       // Use chwAPI.getPickups() to get pickups assigned to this CHW
       const result = await chwAPI.getPickups();
 
@@ -64,7 +64,7 @@ export default function PickupRequests() {
       console.error('Error fetching pickups:', err);
       setError('Failed to load pickup requests');
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Upload, Loader } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
-import Select from '../../components/FormFields/Select';
 import { medicinesAPI, disposalsAPI } from '../../services/api';
 import SearchBar from '../../components/SearchBar';
 
@@ -10,9 +9,6 @@ export default function AddDisposal() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     generic_name: '',
-    brand_name: '',
-    dosage_form: '',
-    packaging_type: '',
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -20,25 +16,231 @@ export default function AddDisposal() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
-  const [showOCRDetails, setShowOCRDetails] = useState(false);
-  const [showAdvancedGuidance, setShowAdvancedGuidance] = useState(false);
 
-  const dosageForms = [
-    { value: 'Tablet', label: 'Tablet' },
-    { value: 'Capsule', label: 'Capsule' },
-    { value: 'Syrup', label: 'Syrup' },
-    { value: 'Injection', label: 'Injection' },
-    { value: 'Cream', label: 'Cream' },
-    { value: 'Inhaler', label: 'Inhaler' },
-  ];
+  const [showDetails, setShowDetails] = useState(false);
 
-  const packagingTypes = [
-    { value: 'Blister Pack', label: 'Blister Pack' },
-    { value: 'Bottle', label: 'Bottle' },
-    { value: 'Tube', label: 'Tube' },
-    { value: 'Vial', label: 'Vial' },
-    { value: 'Box', label: 'Box' },
-  ];
+  const clampConfidence = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return null;
+    if (value > 1 && value <= 100) return Math.min(value / 100, 1);
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  };
+
+  const formatPercent = (value) => {
+    const clamped = clampConfidence(value);
+    if (typeof clamped !== 'number' || Number.isNaN(clamped)) return null;
+    return `${Math.round(clamped * 100)}%`;
+  };
+
+  const renderConfidenceList = (items, emptyFallback) => {
+    if (!Array.isArray(items) || items.length === 0) {
+      return emptyFallback ? <p className="text-gray-600 dark:text-gray-400">{emptyFallback}</p> : null;
+    }
+
+    return (
+      <ul className="list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300">
+        {items
+          .map((item, index) => {
+            if (!item) return null;
+            const label = item.label || item.value;
+            if (!label) return null;
+            const confidence = typeof item.confidence === 'number' ? clampConfidence(item.confidence) : null;
+            return {
+              label,
+              confidence,
+              key: item.id || `${label}-${index}`
+            };
+          })
+          .filter(Boolean)
+          .map((entry) => (
+            <li key={entry.key} className="flex items-center justify-between gap-2">
+              <span className="font-medium text-sm md:text-base break-words">{entry.label}</span>
+              {typeof entry.confidence === 'number' && (
+              <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                  {formatPercent(entry.confidence)}
+              </span>
+            )}
+          </li>
+          ))}
+      </ul>
+    );
+  };
+
+  const renderAnalysisContent = (analysisText) => {
+    if (!analysisText) return null;
+
+    return analysisText
+      .split('\n')
+      .map((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={`break-${index}`} className="h-2" />;
+        }
+        if (trimmed.startsWith('## ')) {
+          return (
+            <h4 key={`heading-${index}`} className="font-semibold text-gray-800 dark:text-gray-200 mt-3">
+              {trimmed.replace(/^##\s*/, '')}
+            </h4>
+          );
+        }
+        if (trimmed.startsWith('# ')) {
+          return (
+            <h3 key={`heading-main-${index}`} className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-4">
+              {trimmed.replace(/^#\s*/, '')}
+            </h3>
+          );
+        }
+        const bolded = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        return (
+          <p
+            key={`paragraph-${index}`}
+            className="text-sm md:text-base text-gray-700 dark:text-gray-300"
+            dangerouslySetInnerHTML={{ __html: bolded.replace(/\n/g, '<br />') }}
+          />
+        );
+      });
+  };
+
+  const formatCategoryLabel = (value) => {
+    if (!value) return 'Not classified yet';
+    const stringValue = value.toString().trim();
+    if (!stringValue) return 'Not classified yet';
+    const primary = stringValue.split('•')[0].split('|')[0].trim();
+    if (/^category\s*\d+$/i.test(primary)) {
+      return primary.replace(/category/i, 'Category ');
+    }
+    if (/^\d+$/.test(primary)) {
+      return `Category ${primary}`;
+    }
+    const normalized = primary.replace(/_/g, ' ');
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
+
+  const formatRiskLevel = (value) => {
+    if (!value) return 'UNKNOWN';
+    return value.toString().replace(/_/g, ' ').toUpperCase();
+  };
+
+  const getRiskBadgeClass = (value) => {
+    const upper = value ? value.toString().toUpperCase() : '';
+    if (upper === 'HIGH') return 'badge-danger';
+    if (upper === 'MEDIUM') return 'badge-warning';
+    if (upper === 'LOW') return 'badge-success';
+    return 'badge-secondary';
+  };
+
+  const normalizeRiskLevelForPayload = (value) => {
+    if (!value) return null;
+    const normalized = value.toString().trim().toUpperCase();
+    if (normalized.includes('HIGH')) return 'HIGH';
+    if (normalized.includes('MEDIUM')) return 'MEDIUM';
+    if (normalized.includes('LOW')) return 'LOW';
+    return null;
+  };
+
+  const modelPredictions = prediction?.predictions || {};
+  const normalizedCategory =
+    modelPredictions && typeof modelPredictions.disposal_category === 'object'
+      ? modelPredictions.disposal_category
+      : modelPredictions.disposal_category
+      ? { value: modelPredictions.disposal_category }
+      : null;
+
+  const disposalCategoryValue = normalizedCategory?.value ?? null;
+  const disposalMethods = Array.isArray(modelPredictions.method_of_disposal)
+    ? modelPredictions.method_of_disposal
+    : [];
+  const dosageFormPredictions = Array.isArray(modelPredictions.dosage_form)
+    ? modelPredictions.dosage_form
+    : [];
+  const manufacturerPredictions = Array.isArray(modelPredictions.manufacturer)
+    ? modelPredictions.manufacturer
+    : [];
+  const handlingMethod = modelPredictions.handling_method || '';
+  const disposalRemarks = modelPredictions.disposal_remarks || '';
+  const similarGenericName = modelPredictions.similar_generic_name || '';
+  const similarityDistance =
+    typeof modelPredictions.similarity_distance === 'number'
+      ? modelPredictions.similarity_distance
+      : null;
+  const inputGenericName = modelPredictions.input_generic_name || '';
+
+  const categoryConfidence =
+    typeof normalizedCategory?.confidence === 'number'
+      ? clampConfidence(normalizedCategory.confidence)
+      : null;
+  const firstMethodWithConfidence = disposalMethods.find(
+    (method) => typeof method?.confidence === 'number'
+  );
+  const methodConfidence = firstMethodWithConfidence
+    ? clampConfidence(firstMethodWithConfidence.confidence)
+    : null;
+  const confidenceValue = categoryConfidence ?? methodConfidence ?? 0;
+
+  const predictionHasErrors = Array.isArray(prediction?.errors) && prediction.errors.length > 0;
+  const primaryGuidance = handlingMethod || disposalMethods[0]?.value || '';
+  const riskLevelValue = prediction ? modelPredictions?.risk_level || prediction.riskLevel : null;
+  const friendlyRiskLabel = formatRiskLevel(riskLevelValue);
+  const riskBadgeClass = getRiskBadgeClass(riskLevelValue);
+  const friendlyCategoryLabel = formatCategoryLabel(disposalCategoryValue);
+  const identifiedMedicine =
+    prediction?.medicineName || inputGenericName || formData.generic_name || 'your medicine';
+  const predictedBrandName =
+    prediction?.raw?.medicine_info?.brand_name || prediction?.brandName || null;
+  const pickupDisplayName = predictedBrandName
+    ? `${identifiedMedicine} (${predictedBrandName})`
+    : identifiedMedicine;
+  const confidenceText = formatPercent(confidenceValue) || '—';
+  const inputBadgeLabel = (prediction?.inputType || (imageFile ? 'image' : 'text')).toUpperCase();
+
+  const buildDisposalPayload = () => {
+    if (!prediction) return null;
+    const normalizedInputType = prediction.inputType || (imageFile ? 'image' : 'text');
+    const rawMeta = prediction.raw || null;
+    const modelVersion = rawMeta?.model_version || rawMeta?.version || null;
+    const metadata = rawMeta || null;
+    const predictedCategoryValue = disposalCategoryValue || null;
+    const predictedCategoryConfidence = categoryConfidence ?? null;
+    const predictedGenericName =
+      prediction.medicineName || inputGenericName || formData.generic_name || null;
+    const predictedBrandName = rawMeta?.medicine_info?.brand_name || null;
+    const predictedDosageForm =
+      rawMeta?.medicine_info?.dosage_form || dosageFormPredictions[0]?.value || null;
+    const predictedPackagingType = rawMeta?.medicine_info?.packaging_type || null;
+    const storageRiskLevel = normalizeRiskLevelForPayload(riskLevelValue);
+
+    return {
+      genericName: predictedGenericName,
+      brandName: predictedBrandName,
+      dosageForm: predictedDosageForm,
+      packagingType: predictedPackagingType,
+      medicineName: prediction.medicineName || inputGenericName || null,
+      inputGenericName: inputGenericName || null,
+      predictedCategory: predictedCategoryValue,
+      predictedCategoryConfidence,
+      confidence: typeof confidenceValue === 'number' ? confidenceValue : null,
+      riskLevel: storageRiskLevel || 'LOW',
+      disposalGuidance: primaryGuidance || null,
+      handlingMethod: handlingMethod || null,
+      disposalRemarks: disposalRemarks || null,
+      categoryCode: predictedCategoryValue,
+      categoryLabel: null,
+      similarGenericName: similarGenericName || null,
+      similarityDistance: similarityDistance ?? null,
+      predictionInputType: normalizedInputType,
+      predictionSource: rawMeta?.requested_url || rawMeta?.endpoint || rawMeta?.source || null,
+      modelVersion,
+      analysis: prediction.analysis || null,
+      disposalMethods: disposalMethods.length ? disposalMethods : null,
+      dosageForms: dosageFormPredictions.length ? dosageFormPredictions : null,
+      manufacturers: manufacturerPredictions.length ? manufacturerPredictions : null,
+      messages: prediction.messages?.length ? prediction.messages : null,
+      errors: prediction.errors?.length ? prediction.errors : null,
+      predictionDetails: Object.keys(modelPredictions).length ? modelPredictions : null,
+      metadata
+    };
+  };
 
   const handleInputChange = async (e) => {
     const { name, value } = e.target;
@@ -60,9 +262,7 @@ export default function AddDisposal() {
 
   const handleSuggestionClick = (medicine) => {
     setFormData({
-      ...formData,
       generic_name: medicine.genericName,
-      brand_name: medicine.brandName,
     });
     setSuggestions([]);
   };
@@ -92,18 +292,26 @@ export default function AddDisposal() {
     try {
       const result = await medicinesAPI.predictFromText({
         genericName: formData.generic_name,
-        brandName: formData.brand_name,
-        dosageForm: formData.dosage_form,
-        packagingType: formData.packaging_type
       });
 
       if (result && result.success) {
         setPrediction(result.data);
+        setShowDetails(false);
+        const predictedGeneric =
+          result.data?.medicineName ||
+          result.data?.predictions?.input_generic_name ||
+          formData.generic_name;
+
+        if (predictedGeneric) {
+          setFormData({ generic_name: predictedGeneric });
+        }
+        setSuggestions([]);
       } else {
         // handle server-side failure shape
         const msg = result?.error?.message || result?.error || 'Prediction failed. Please try again.';
         setServerError(msg);
         setPrediction(null);
+        setShowDetails(false);
       }
     } catch (error) {
       console.error('Prediction error:', error);
@@ -125,17 +333,21 @@ export default function AddDisposal() {
     const result = await medicinesAPI.predictFromImage(imageFile);
 
     if (result.success) {
+      const predictedGeneric =
+        result.data?.medicineName ||
+        result.data?.predictions?.input_generic_name ||
+        '';
+
       setFormData({
-        generic_name: result.data.ocr_text?.medicine_name || '',
-        brand_name: result.data.ocr_text?.brand_name || '',
-        dosage_form: '',
-        packaging_type: '',
+        generic_name: predictedGeneric,
       });
       setPrediction(result.data);
+      setShowDetails(false);
     } else {
       const msg = result?.error?.message || result?.error || 'Image prediction failed. Please try again.';
       setServerError(msg);
       setPrediction(null);
+      setShowDetails(false);
     }
   } catch (error) {
     console.error('Image prediction error:', error);
@@ -151,17 +363,14 @@ export default function AddDisposal() {
       return;
     }
 
-    const disposal = {
-      genericName: formData.generic_name,
-      brandName: formData.brand_name,
-      dosageForm: formData.dosage_form,
-      packagingType: formData.packaging_type,
-      predictedCategory: prediction.predicted_category,
-      riskLevel: prediction.risk_level,
-      confidence: prediction.confidence,
-      disposalGuidance: prediction.disposal_guidance,
-      reason: 'user_initiated',
-    };
+    const disposal = buildDisposalPayload();
+
+    if (!disposal) {
+      alert('Unable to prepare disposal payload. Please try again.');
+      return;
+    }
+
+    disposal.reason = 'user_initiated';
 
     try {
       setLoading(true);
@@ -183,7 +392,7 @@ export default function AddDisposal() {
           setServerError(msg);
         }
       } else {
-        const result = await disposalsAPI.create(disposal);
+  const result = await disposalsAPI.create(disposal);
 
         if (result && result.success) {
           alert('Disposal saved successfully!');
@@ -211,17 +420,14 @@ export default function AddDisposal() {
     (async () => {
       setLoading(true);
       setServerError(null);
-      const disposal = {
-        genericName: formData.generic_name,
-        brandName: formData.brand_name,
-        dosageForm: formData.dosage_form,
-        packagingType: formData.packaging_type,
-        predictedCategory: prediction.predicted_category,
-        riskLevel: prediction.risk_level,
-        confidence: prediction.confidence,
-        disposalGuidance: prediction.disposal_guidance,
-        reason: 'user_initiated',
-      };
+      const disposal = buildDisposalPayload();
+
+      if (!disposal) {
+        alert('Unable to prepare disposal payload. Please try again.');
+        return;
+      }
+
+      disposal.reason = 'user_initiated';
 
       try {
         let result;
@@ -237,11 +443,11 @@ export default function AddDisposal() {
 
           navigate('/user/chw-interaction', {
             state: {
-              medicineName: `${formData.generic_name}${
-                formData.brand_name ? ` (${formData.brand_name})` : ''
-              }`,
-              disposalGuidance: prediction.disposal_guidance,
-              riskLevel: prediction.risk_level,
+              medicineName: pickupDisplayName,
+              disposalGuidance: primaryGuidance,
+              disposalCategory: disposalCategoryValue,
+              predictionInputType: prediction?.inputType || (imageFile ? 'image' : 'text'),
+              hasWarnings: predictionHasErrors,
               disposalId: createdId
             }
           });
@@ -279,7 +485,7 @@ export default function AddDisposal() {
         Add New Disposal
       </h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Enter medicine details to get proper disposal guidance
+        Provide a medicine name to generate tailored disposal guidance
       </p>
 
       {serverError && (
@@ -326,17 +532,28 @@ export default function AddDisposal() {
                 )}
               </button>
             )}
+            {prediction && prediction.inputType === 'image' && (
+              <p
+                className={`mt-4 text-sm ${
+                  predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'
+                }`}
+              >
+                {predictionHasErrors
+                  ? 'Image prediction returned warnings. Review below.'
+                  : 'Image prediction ready. Review the model output below.'}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Manual entry form - inputs arranged in two columns */}
+        {/* Manual entry form - simplified to a single name field */}
         <form onSubmit={handlePredictFromText} className="card">
-          <h2 className="text-xl font-bold mb-4">Option 2: Enter medecine Details</h2>
+          <h2 className="text-xl font-bold mb-4">Option 2: Type Medicine Name</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div className="relative">
               <Input
-                label="Generic Medicine Name"
+                label="Medicine Name"
                 id="generic_name"
                 name="generic_name"
                 value={formData.generic_name}
@@ -356,45 +573,13 @@ export default function AddDisposal() {
                     >
                       <div className="font-medium">{med.genericName}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {med.brandName} • {med.dosageForm}
+                        {med.brandName}
+                        {med.dosageForm ? ` • ${med.dosageForm}` : ''}
                       </div>
                     </button>
                   ))}
                 </div>
               )}
-            </div>
-
-            <div>
-              <Input
-                label="Brand Name (Optional)"
-                id="brand_name"
-                name="brand_name"
-                value={formData.brand_name}
-                onChange={handleInputChange}
-                placeholder="e.g., Panadol"
-              />
-            </div>
-
-            <div>
-              <Select
-                label="Dosage Form"
-                id="dosage_form"
-                name="dosage_form"
-                value={formData.dosage_form}
-                onChange={handleInputChange}
-                options={dosageForms}
-              />
-            </div>
-
-            <div>
-              <Select
-                label="Packaging Type"
-                id="packaging_type"
-                name="packaging_type"
-                value={formData.packaging_type}
-                onChange={handleInputChange}
-                options={packagingTypes}
-              />
             </div>
           </div>
 
@@ -409,157 +594,157 @@ export default function AddDisposal() {
                 'Get Disposal Guidance'
               )}
             </button>
+            {prediction && prediction.inputType === 'text' && (
+              <p
+                className={`mt-3 text-center text-sm ${
+                  predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'
+                }`}
+              >
+                {predictionHasErrors
+                  ? 'Text prediction returned warnings. Review below.'
+                  : 'Text prediction ready. Review the model output below.'}
+              </p>
+            )}
           </div>
         </form>
       </div>
 
       {/* Output card placed below the parallel inputs */}
       {prediction && (
-        <div className="card mt-6 border-2 border-primary-blue dark:border-accent-cta">
-          <div className="flex items-start gap-4 mb-4">
-            {prediction.risk_level === 'HIGH' ? (
-              <AlertTriangle className="w-8 h-8 text-warning flex-shrink-0" />
-            ) : (
-              <CheckCircle className="w-8 h-8 text-primary-green flex-shrink-0" />
-            )}
-            <div className="flex-1">
-              <h3 className="text-xl font-bold mb-2">Classification Results</h3>
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <span className="badge badge-info">{prediction.predicted_category}</span>
-                <span
-                  className={`badge badge-${
-                    prediction.risk_level === 'HIGH'
-                      ? 'danger'
-                      : prediction.risk_level === 'MEDIUM'
-                      ? 'warning'
-                      : 'success'
-                  }`}
-                >
-                  {prediction.risk_level} Risk
-                </span>
-              </div>
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  Confidence Level
-                </p>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                  <div
-                    className="bg-primary-green h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${prediction.confidence * 100}%` }}
-                  />
+        <div className="card mt-6 border border-primary-blue dark:border-accent-cta">
+          <div className="space-y-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-start gap-3">
+                {predictionHasErrors ? (
+                  <AlertTriangle className="w-8 h-8 text-warning flex-shrink-0" />
+                ) : (
+                  <CheckCircle className="w-8 h-8 text-primary-green flex-shrink-0" />
+                )}
+                <div>
+                  <h3 className="text-xl font-bold mb-1">Disposal Guidance Preview</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
+                    {`Model identified ${identifiedMedicine} and prepared guidance for you.`}
+                  </p>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {(prediction.confidence * 100).toFixed(0)}%
+              </div>
+              <div className="flex items-center gap-2 self-start">
+                <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
+                <span className="badge badge-secondary">{inputBadgeLabel}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Category</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{friendlyCategoryLabel}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Confidence</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{confidenceText}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Warnings</p>
+                <p
+                  className={`text-sm font-semibold mt-1 ${predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'}`}
+                >
+                  {predictionHasErrors ? 'Review warnings' : 'None detected'}
                 </p>
               </div>
             </div>
-          </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-4">
-            <h4 className="font-bold mb-2">Disposal Guidance:</h4>
-            <p className="text-gray-700 dark:text-gray-300">
-              {prediction.disposal_guidance}
-            </p>
-          </div>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+              <h4 className="font-semibold mb-1 text-gray-900 dark:text-gray-100">Recommended Action</h4>
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                {primaryGuidance || 'No specific guidance returned by the model.'}
+              </p>
+            </div>
 
-          {/* OCR details when available (collapsible) */}
-          {prediction.ocr_info && (
-            <div className="mb-4">
-              <button
-                type="button"
-                onClick={() => setShowOCRDetails(!showOCRDetails)}
-                className="text-sm text-primary-blue dark:text-accent-cta font-medium mb-2"
-              >
-                {showOCRDetails ? 'Hide OCR details' : 'Show OCR details'}
-              </button>
+            <button
+              type="button"
+              onClick={() => setShowDetails((prev) => !prev)}
+              className="btn-outline w-full md:w-auto"
+            >
+              {showDetails ? 'Hide detailed model output' : 'Show detailed model output'}
+            </button>
 
-              {showOCRDetails && (
-                <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border">
-                  <h4 className="font-bold mb-2">OCR Extraction (image)</h4>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    <div><strong>Confidence:</strong> {prediction.ocr_info.confidence ?? 'N/A'}</div>
-                    <div><strong>Medicine texts found:</strong> {prediction.ocr_info.medicine_texts_found ?? 0}</div>
+            {showDetails && (
+              <div className="space-y-6">
+                {disposalRemarks && (
+                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-bold mb-2">Model Remarks</h4>
+                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300">{disposalRemarks}</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div><strong>Generic name:</strong> {prediction.ocr_info.extracted_info?.generic_name || '—'}</div>
-                    <div><strong>Brand name:</strong> {prediction.ocr_info.extracted_info?.brand_name || '—'}</div>
-                    <div><strong>Dosage / Strength:</strong> {prediction.ocr_info.extracted_info?.dosage_strength || '—'}</div>
-                    <div><strong>Dosage form:</strong> {prediction.ocr_info.extracted_info?.dosage_form || '—'}</div>
-                    <div className="md:col-span-2"><strong>Active ingredients:</strong> {(prediction.ocr_info.extracted_info?.active_ingredients || []).join(', ') || '—'}</div>
-                    {prediction.ocr_info.extracted_info?.other_info && (
-                      <div className="md:col-span-2"><strong>Other:</strong> {(prediction.ocr_info.extracted_info.other_info || []).join(', ')}</div>
+                )}
+
+                {(disposalMethods.length || dosageFormPredictions.length || manufacturerPredictions.length) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {disposalMethods.length > 0 && (
+                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                        <h4 className="font-bold mb-2">Recommended Disposal Methods</h4>
+                        {renderConfidenceList(disposalMethods, 'No disposal methods available.')}
+                      </div>
+                    )}
+                    {dosageFormPredictions.length > 0 && (
+                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                        <h4 className="font-bold mb-2">Likely Dosage Forms</h4>
+                        {renderConfidenceList(dosageFormPredictions, 'No dosage form predictions returned.')}
+                      </div>
+                    )}
+                    {manufacturerPredictions.length > 0 && (
+                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                        <h4 className="font-bold mb-2">Possible Manufacturers</h4>
+                        {renderConfidenceList(manufacturerPredictions, 'No manufacturer predictions returned.')}
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
 
+                {prediction.analysis && (
+                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-bold mb-2">Detailed Analysis</h4>
+                    <div className="space-y-2">
+                      {renderAnalysisContent(prediction.analysis)}
+                    </div>
+                  </div>
+                )}
 
-          {/* Safety guidance (primary + collapsible advanced details) */}
-          {prediction.safety_guidance && (
-            <div className="mb-4">
-              {/* Show the most actionable instruction first (prefer procedure, otherwise disposal guidance) */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-2">
-                <h4 className="font-bold mb-2">Recommended Action</h4>
-                <p className="text-gray-700 dark:text-gray-300">
-                  {prediction.safety_guidance.procedure || prediction.disposal_guidance || 'Follow local disposal procedures.'}
-                </p>
+                {prediction.messages && prediction.messages.length > 0 && (
+                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-bold mb-2">Model Messages</h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                      {prediction.messages.map((message, idx) => (
+                        <li key={`message-${idx}`}>{message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {predictionHasErrors && (
+                  <div className="bg-red-50 dark:bg-red-900/40 rounded-lg p-4 border border-red-200 dark:border-red-800">
+                    <h4 className="font-bold mb-2 text-red-700 dark:text-red-200">Model Warnings</h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-red-700 dark:text-red-200">
+                      {prediction.errors.map((err, idx) => (
+                        <li key={`error-${idx}`}>{typeof err === 'string' ? err : JSON.stringify(err)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
+            )}
 
-              <button
-                type="button"
-                onClick={() => setShowAdvancedGuidance(!showAdvancedGuidance)}
-                className="text-sm text-primary-blue dark:text-accent-cta font-medium mb-2"
-              >
-                {showAdvancedGuidance ? 'Hide advanced guidance' : 'Show advanced guidance'}
+            <div className="flex gap-4 flex-nowrap pt-2">
+              <button onClick={handleSaveDisposal} className="btn-secondary flex-1 min-w-0">
+                Save Disposal
               </button>
-
-              {showAdvancedGuidance && (
-                <div className="bg-yellow-50 dark:bg-yellow-900 rounded-lg p-4 border">
-                  <h4 className="font-bold mb-2">Advanced Safety Guidance</h4>
-                  {prediction.safety_guidance.prohibitions && (
-                    <div className="mb-2">
-                      <strong>Prohibitions:</strong>
-                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.prohibitions}</p>
-                    </div>
-                  )}
-                  {prediction.safety_guidance.risks && (
-                    <div className="mb-2">
-                      <strong>Risks:</strong>
-                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.risks}</p>
-                    </div>
-                  )}
-                  {prediction.safety_guidance.special_instructions && (
-                    <div>
-                      <strong>Special instructions:</strong>
-                      <p className="text-gray-700 dark:text-gray-300">{prediction.safety_guidance.special_instructions}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              <button
+                onClick={handleRequestPickup}
+                className={`btn-primary flex-1 min-w-0 ${!prediction ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={!prediction}
+                title={!prediction ? 'Analyze to enable pickup request' : 'Request CHW pickup'}
+              >
+                Request CHW Pickup
+              </button>
             </div>
-          )}
-
-          {prediction.safety_notes && (
-            <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 rounded-lg p-4 mb-4">
-              <h4 className="font-bold mb-2">Safety Notes:</h4>
-              <p className="text-gray-700 dark:text-gray-300">{prediction.safety_notes}</p>
-            </div>
-          )}
-
-          <div className="flex gap-4 flex-nowrap">
-            <button onClick={handleSaveDisposal} className="btn-secondary flex-1 min-w-0">
-              Save Disposal
-            </button>
-            <button
-              onClick={handleRequestPickup}
-              className={`btn-primary flex-1 min-w-0 ${!prediction ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={!prediction}
-              title={!prediction ? 'Analyze to enable pickup request' : 'Request CHW pickup'}
-            >
-              Request CHW Pickup
-            </button>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MapPin, Calendar, CheckCircle, User, Phone, Star } from 'lucide-react';
+import { MapPin, CheckCircle, Phone, Star } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
 import Textarea from '../../components/FormFields/Textarea';
 import Select from '../../components/FormFields/Select';
@@ -15,6 +15,7 @@ export default function CHWInteraction() {
   const [query, setQuery] = useState('');
   const [chws, setChws] = useState([]);
   const [pickups, setPickups] = useState([]);
+  const [disposals, setDisposals] = useState([]);
   // Two loading flags: initialLoading controls the first full-screen loader,
   // refreshing indicates background refreshes (polling) so we avoid a full-page reload feel.
   const [initialLoading, setInitialLoading] = useState(true);
@@ -22,6 +23,35 @@ export default function CHWInteraction() {
   const [error, setError] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const pickupStatusBadgeMap = {
+    completed: 'badge-success',
+    scheduled: 'badge-info',
+    collected: 'badge-info',
+    pending: 'badge-warning',
+    cancelled: 'badge-danger',
+    rejected: 'badge-danger',
+    not_requested: 'badge-secondary'
+  };
+
+  const disposalStatusBadgeMap = {
+    completed: 'badge-success',
+    pickup_requested: 'badge-info',
+    pending_review: 'badge-warning',
+    cancelled: 'badge-danger'
+  };
+
+  const createStatusBadge = (status, mapping) => {
+    const key = (status || '').toLowerCase();
+    const badgeClass = mapping[key] || 'badge-secondary';
+    const label = key ? key.replace(/_/g, ' ') : 'unknown';
+
+    return (
+      <span className={`badge ${badgeClass}`}>
+        {label.toUpperCase()}
+      </span>
+    );
+  };
 
   useEffect(() => {
     // Initial load should show the full-screen loader
@@ -51,7 +81,18 @@ export default function CHWInteraction() {
     };
   }, []);
 
-  const fetchData = async ({ background = false } = {}) => {
+  const fetchData = async ({ background = false, searchTerm } = {}) => {
+    const effectiveSearch = typeof searchTerm === 'string' ? searchTerm.trim() : query.trim();
+    const chwParams = { limit: 50 };
+
+    if (user.sector) {
+      chwParams.sector = user.sector;
+    }
+
+    if (effectiveSearch) {
+      chwParams.search = effectiveSearch;
+    }
+
     try {
       if (background) {
         setRefreshing(true);
@@ -59,70 +100,92 @@ export default function CHWInteraction() {
         setInitialLoading(true);
       }
 
-      const [chwsResult, pickupsResult] = await Promise.all([
-        chwAPI.getAvailable(),
-        pickupsAPI.getAll()
+      const [chwsResult, pickupsResult, disposalsResult] = await Promise.all([
+        chwAPI.getAll(chwParams),
+        pickupsAPI.getAll(),
+        background ? Promise.resolve(null) : disposalsAPI.getAll()
       ]);
 
-      // When running as a background refresh, avoid clobbering state and
-      // triggering re-renders if the data hasn't changed.
       if (chwsResult?.success) {
+        const incomingList = chwsResult.data || [];
+
+        const applyChwUpdate = () => {
+          setChws(incomingList);
+          if (selectedCHW) {
+            const selectedId = selectedCHW.id || selectedCHW.userId;
+            const refreshedSelection = incomingList.find(
+              (chw) => (chw.id || chw.userId) === selectedId
+            );
+            if (refreshedSelection) {
+              setSelectedCHW(refreshedSelection);
+            }
+          }
+        };
+
         if (background) {
           try {
             const existing = JSON.stringify(chws || []);
-            const incoming = JSON.stringify(chwsResult.data || []);
-            if (existing !== incoming) setChws(chwsResult.data);
+            const incoming = JSON.stringify(incomingList);
+            if (existing !== incoming) {
+              applyChwUpdate();
+            }
           } catch (e) {
-            setChws(chwsResult.data);
+            applyChwUpdate();
           }
         } else {
-          setChws(chwsResult.data);
+          applyChwUpdate();
         }
       }
 
       if (pickupsResult?.success) {
+        const pickupData = pickupsResult.data || [];
+
         if (background) {
           try {
             const existingP = JSON.stringify(pickups || []);
-            const incomingP = JSON.stringify(pickupsResult.data || []);
-            if (existingP !== incomingP) setPickups(pickupsResult.data);
+            const incomingP = JSON.stringify(pickupData);
+            if (existingP !== incomingP) {
+              setPickups(pickupData);
+            }
           } catch (e) {
-            setPickups(pickupsResult.data);
+            setPickups(pickupData);
           }
         } else {
-          setPickups(pickupsResult.data);
+          setPickups(pickupData);
         }
+      }
+
+      if (!background && disposalsResult?.success) {
+        setDisposals(disposalsResult.data || []);
+      }
+
+      if (!background) {
+        setError('');
       }
     } catch (err) {
       console.error('Error fetching data:', err);
-      setError('Failed to load CHW data');
+      setError('Failed to load CHW and pickup data');
     } finally {
-      if (background) setRefreshing(false);
-      else setInitialLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setInitialLoading(false);
+      }
     }
   };
 
-  // Filter CHWs by user's sector first, then by search query
+  // Backend filters by sector & search, but keep client-side search as a fallback.
   const filteredCHWs = useMemo(() => {
-    // First filter by sector - only show CHWs from the same sector as the user
-    let sectorFiltered = chws;
-    if (user.sector) {
-      sectorFiltered = chws.filter(c =>
-        c.sector && c.sector.toLowerCase() === user.sector.toLowerCase()
-      );
-    }
-
-    // Then apply search query filter
-    if (!query) return sectorFiltered;
+    if (!query) return chws;
     const q = query.toLowerCase();
-    return sectorFiltered.filter(
-      c =>
+    return chws.filter(
+      (c) =>
         (c.name || '').toLowerCase().includes(q) ||
         (c.sector || '').toLowerCase().includes(q) ||
         (c.coverageArea || '').toLowerCase().includes(q) ||
         (c.phone || '').toLowerCase().includes(q)
     );
-  }, [query, chws, user.sector]);
+  }, [query, chws]);
 
   const [selectedCHW, setSelectedCHW] = useState(null);
   const [formData, setFormData] = useState({
@@ -146,6 +209,12 @@ export default function CHWInteraction() {
 
   const handleCHWSelect = (chw) => {
     setSelectedCHW(chw);
+  };
+
+  const handleSearch = (searchValue) => {
+    const value = typeof searchValue === 'string' ? searchValue : '';
+    setQuery(value);
+    fetchData({ background: false, searchTerm: value });
   };
 
   const handleInputChange = (e) => {
@@ -253,6 +322,53 @@ export default function CHWInteraction() {
     }));
   }, [pickups]);
 
+  const formattedDisposals = useMemo(() => {
+    return disposals.map((disposal) => {
+      const pickupStatus = disposal.pickupRequest?.status || (disposal.pickupRequestId ? 'pending' : 'not_requested');
+
+      return {
+        ...disposal,
+        medicineLabel: disposal.genericName || disposal.medicineName || '—',
+        statusLabel: disposal.status || 'pending_review',
+        inputType: (disposal.predictionInputType || 'manual').toUpperCase(),
+        pickupStatus,
+        createdAt: disposal.createdAt
+          ? new Date(disposal.createdAt).toLocaleDateString()
+          : '—'
+      };
+    });
+  }, [disposals]);
+
+  const disposalColumns = [
+    {
+      key: 'medicineLabel',
+      label: 'Medicine',
+      sortable: true
+    },
+    {
+      key: 'statusLabel',
+      label: 'Disposal Status',
+      sortable: true,
+      render: (value) => createStatusBadge(value, disposalStatusBadgeMap)
+    },
+    {
+      key: 'inputType',
+      label: 'Input',
+      sortable: true
+    },
+    {
+      key: 'pickupStatus',
+      label: 'Pickup',
+      sortable: true,
+      render: (value) => createStatusBadge(value, pickupStatusBadgeMap)
+    },
+    {
+      key: 'createdAt',
+      label: 'Created',
+      sortable: true
+    }
+  ];
+
   const pickupColumns = [
     {
       key: 'medicineName',
@@ -268,21 +384,7 @@ export default function CHWInteraction() {
       key: 'status',
       label: 'Status',
       sortable: true,
-      render: (value) => (
-        <span
-          className={`badge badge-${
-            value === 'completed'
-              ? 'success'
-              : value === 'scheduled'
-              ? 'info'
-              : value === 'pending'
-              ? 'warning'
-              : 'danger'
-          }`}
-        >
-          {value.toUpperCase()}
-        </span>
-      ),
+      render: (value) => createStatusBadge(value, pickupStatusBadgeMap),
     },
     {
       key: 'createdAt',
@@ -313,6 +415,12 @@ export default function CHWInteraction() {
       <p className="text-gray-600 dark:text-gray-400 mb-8">
         Connect with Community Health Workers for safe medicine disposal
       </p>
+
+      {refreshing && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+          Refreshing latest availability and pickup data…
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
@@ -346,7 +454,7 @@ export default function CHWInteraction() {
           )}
           <div className="mb-4 max-w-md">
             <SearchBar
-              onSearch={(q) => setQuery(q)}
+              onSearch={handleSearch}
               placeholder="Search CHWs by name, sector or coverage area..."
             />
           </div>
@@ -360,49 +468,70 @@ export default function CHWInteraction() {
                 </p>
               </div>
             ) : (
-              filteredCHWs.map((chw) => (
-              <div
-                key={chw.id}
-                className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                  selectedCHW?.id === chw.id
-                    ? 'border-primary-blue dark:border-accent-cta bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-primary-blue dark:hover:border-accent-cta'
-                }`}
-                onClick={() => handleCHWSelect(chw)}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="w-12 h-12 rounded-full bg-primary-green text-white flex items-center justify-center font-semibold flex-shrink-0">
-                      {chw.avatar}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{chw.name}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                        <MapPin className="w-4 h-4" />
-                        {chw.coverageArea}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                        <Phone className="w-4 h-4" />
-                        {chw.phone}
-                      </p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span
-                          className={`badge ${
-                            chw.availability === 'available' ? 'badge-success' : 'badge-warning'
-                          }`}
-                        >
-                          {chw.availability}
-                        </span>
-                        <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                          {chw.rating}
-                        </span>
+              filteredCHWs.map((chw) => {
+                const chwId = chw.id || chw.userId;
+                const availabilityValue = (chw.availability || 'offline').toLowerCase();
+                const availabilityClass =
+                  availabilityValue === 'available'
+                    ? 'badge-success'
+                    : availabilityValue === 'busy'
+                    ? 'badge-warning'
+                    : 'badge-secondary';
+                const availabilityLabel = availabilityValue.replace(/_/g, ' ');
+                const availabilityDisplay = availabilityLabel.charAt(0).toUpperCase() + availabilityLabel.slice(1);
+                const initials = (chw.avatar || '')
+                  || (chw.name
+                    ? chw.name
+                        .split(' ')
+                        .map((segment) => segment.charAt(0))
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()
+                    : 'CH');
+                const isSelected = (selectedCHW?.id || selectedCHW?.userId) === chwId;
+                const ratingDisplay =
+                  typeof chw.rating === 'number' ? chw.rating.toFixed(1) : chw.rating || 'N/A';
+
+                return (
+                  <div
+                    key={chwId}
+                    className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-primary-blue dark:border-accent-cta bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-primary-blue dark:hover:border-accent-cta'
+                    }`}
+                    onClick={() => handleCHWSelect(chw)}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className="w-12 h-12 rounded-full bg-primary-green text-white flex items-center justify-center font-semibold flex-shrink-0">
+                          {initials}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">{chw.name}</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                            <MapPin className="w-4 h-4" />
+                            {chw.coverageArea || chw.sector || 'Sector unavailable'}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                            <Phone className="w-4 h-4" />
+                            {chw.phone || 'Phone not provided'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`badge ${availabilityClass}`}>
+                              {availabilityDisplay}
+                            </span>
+                            <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                              <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                              {ratingDisplay}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -504,6 +633,11 @@ export default function CHWInteraction() {
       <div className="card">
         <h2 className="text-xl font-bold mb-4">My Pickup Requests</h2>
         <Table columns={pickupColumns} data={formattedPickups} />
+      </div>
+
+      <div className="card mt-6">
+        <h2 className="text-xl font-bold mb-4">My Disposals</h2>
+        <Table columns={disposalColumns} data={formattedDisposals} />
       </div>
     </div>
   );

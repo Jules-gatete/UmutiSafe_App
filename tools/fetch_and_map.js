@@ -2,7 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 
-const MODEL_API_URL = process.env.VITE_MODEL_API_URL || 'http://localhost:8000';
+const DEPRECATED_MODEL_HOSTS = new Set([
+  'https://plankton-app-2c2ae.ondigitalocean.app',
+  'https://plankton-app-2c2ae.ondigitalocean.app/'
+]);
+
+const rawModelUrl = process.env.VITE_MODEL_API_URL;
+const MODEL_API_URL = (rawModelUrl && !DEPRECATED_MODEL_HOSTS.has(rawModelUrl.trim()))
+  ? rawModelUrl.trim().replace(/\/$/, '')
+  : 'http://localhost:8000';
 
 function mapFastApiResponse(f) {
   return {

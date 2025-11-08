@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import useStablePolling from '../../hooks/useStablePolling';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Filter, Eye, Package, CheckCircle, Clock, AlertTriangle, Truck } from 'lucide-react';
@@ -19,14 +19,32 @@ export default function DisposalHistory() {
   const [error, setError] = useState('');
   const [serverError, setServerError] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // apply filter from query params (e.g., ?filter=pending_review or ?filter=highRisk)
-  const params = new URLSearchParams(window.location.search);
-  const f = params.get('filter');
-  if (f) {
-    if (f === 'highRisk') applyCardFilter('highRisk');
-    else applyCardFilter(f);
-  }
+  const applyCardFilter = useCallback((type) => {
+    setPage(1);
+    if (type === 'highRisk') {
+      setHighRiskFilter(true);
+      setFilterStatus('all');
+      return;
+    }
+
+    setHighRiskFilter(false);
+    setFilterStatus(type);
+  }, [setPage, setHighRiskFilter, setFilterStatus]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const filter = params.get('filter');
+    if (!filter) return;
+
+    if (filter === 'highRisk') {
+      applyCardFilter('highRisk');
+      return;
+    }
+
+    applyCardFilter(filter);
+  }, [location.search, applyCardFilter]);
 
   // Use centralized polling: fetchDisposals will be called with { background }
   useStablePolling(async ({ background = false } = {}) => {
@@ -64,7 +82,7 @@ export default function DisposalHistory() {
 
   const fetchDisposals = async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
       setServerError('');
       const response = await disposalsAPI.getAll();
       if (response && response.success) {
@@ -78,7 +96,7 @@ export default function DisposalHistory() {
       console.error('Error fetching disposals:', err);
       setError('Failed to load disposal history');
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -107,22 +125,10 @@ export default function DisposalHistory() {
   // Pagination calculations
   const totalItems = filteredDisposals.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const pagedData = React.useMemo(() => {
+  const pagedData = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filteredDisposals.slice(start, start + pageSize);
   }, [filteredDisposals, page, pageSize]);
-
-  const applyCardFilter = (type) => {
-    // type: 'all' | 'completed' | 'pending_review' | 'pickup_requested' | 'highRisk'
-    setPage(1);
-    if (type === 'highRisk') {
-      setHighRiskFilter(true);
-      setFilterStatus('all');
-    } else {
-      setHighRiskFilter(false);
-      setFilterStatus(type);
-    }
-  };
 
   const columns = [
     {
@@ -241,7 +247,13 @@ export default function DisposalHistory() {
             <option value="pending_review">Pending Review</option>
             <option value="pickup_requested">Pickup Requested</option>
           </select>
-          <button onClick={fetchDisposals} className="btn-outline ml-auto">Refresh</button>
+          <button
+            onClick={fetchDisposals}
+            className="btn-outline ml-auto"
+            disabled={refreshing}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
       </div>
 
