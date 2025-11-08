@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Upload, Database, Search, Plus, Edit, Trash2 } from 'lucide-react';
+import { Upload, Database, Plus, Edit, Trash2, Info } from 'lucide-react';
 import Table from '../../components/Table';
 import SearchBar from '../../components/SearchBar';
 import Modal from '../../components/Modal';
@@ -74,6 +74,10 @@ export default function MedicinesRegistry() {
     );
   }, [medicines, searchQuery]);
 
+  const handleSearch = (value) => {
+    setSearchQuery(value || '');
+  };
+
   const columns = [
     { key: 'genericName', label: 'Generic Name', sortable: true },
     { key: 'brandName', label: 'Brand Name', sortable: true },
@@ -116,7 +120,8 @@ export default function MedicinesRegistry() {
       if (response.success) {
         const summary = response.data || {};
         const detail = `Created: ${summary.created || 0}\nUpdated: ${summary.updated || 0}\nSkipped: ${summary.skipped || 0}`;
-        alert(`CSV uploaded successfully!\n\n${detail}`);
+        const mode = summary.mode === 'append' ? 'Appended to existing registry' : 'Registry replaced with uploaded CSV';
+        alert(`CSV processed successfully!\n${mode}\n\n${detail}`);
         setCsvFile(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -124,8 +129,11 @@ export default function MedicinesRegistry() {
         fetchMedicines(); // Refresh the list
       }
     } catch (err) {
+      // Surface backend error message to help diagnose 500s (e.g., CSV headers or size issues)
+      const serverMsg = err?.response?.data?.message || err?.message || 'Unknown error';
+      const status = err?.response?.status;
       console.error('Error uploading CSV:', err);
-      alert('Failed to upload CSV. Please try again.');
+      alert(`Failed to upload CSV${status ? ` (HTTP ${status})` : ''}.\n\nDetails: ${serverMsg}`);
     } finally {
       setUploading(false);
     }
@@ -239,6 +247,20 @@ export default function MedicinesRegistry() {
         Manage Rwanda FDA approved medicines database
       </p>
 
+      <div className="card mb-6 border border-primary-blue/40 bg-primary-blue/5 dark:bg-primary-blue/10">
+        <div className="flex items-start gap-3">
+          <Info className="w-6 h-6 text-primary-blue mt-1" />
+          <div className="space-y-1 text-sm text-gray-700 dark:text-gray-200">
+            <p className="font-semibold text-primary-blue dark:text-accent-cta">Registered medicines vs. disposal history</p>
+            <p>
+              This registry stores authoritative medicine records imported from Rwanda FDA data. It is independent of
+              the disposal history pages, which track individual user submissions. Uploading a CSV here updates the
+              master medicine catalogue only and will not modify existing disposal entries.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {error && (
         <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
           {error}
@@ -282,18 +304,7 @@ export default function MedicinesRegistry() {
       </div>
 
       <div className="card mb-6">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search medicines..."
-              className="input-field pl-10"
-            />
-          </div>
-        </div>
+        <SearchBar onSearch={handleSearch} placeholder="Search registered medicines..." />
       </div>
 
       <div className="card">
@@ -306,28 +317,52 @@ export default function MedicinesRegistry() {
             Add Medicine
           </button>
         </div>
-        <Table
-          columns={columns}
-          data={filteredMedicines}
-          actions={(row) => (
-            <div className="flex items-center gap-2">
+
+        {filteredMedicines.length === 0 ? (
+          <div className="px-6 py-12 text-center text-gray-600 dark:text-gray-300">
+            <p className="text-lg font-semibold mb-2">No registered medicines yet</p>
+            <p className="mb-6 text-sm max-w-2xl mx-auto">
+              Upload an FDA registry CSV or add entries manually to populate this catalogue. Once imported, records will
+              appear here and remain separate from the disposal history managed elsewhere in the admin console.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
               <button
-                onClick={() => handleEdit(row)}
-                className="btn-outline py-2 px-3 text-sm"
-                title="Edit medicine"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-secondary inline-flex items-center gap-2"
               >
-                <Edit className="w-4 h-4" />
+                <Upload className="w-4 h-4" />
+                Select CSV File
               </button>
-              <button
-                onClick={() => handleDelete(row)}
-                className="btn-outline py-2 px-3 text-sm text-red-600 border-red-600 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:bg-opacity-20"
-                title="Delete medicine"
-              >
-                <Trash2 className="w-4 h-4" />
+              <button onClick={handleAdd} className="btn-outline">
+                Add A Single Medicine
               </button>
             </div>
-          )}
-        />
+          </div>
+        ) : (
+          <Table
+            columns={columns}
+            data={filteredMedicines}
+            actions={(row) => (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleEdit(row)}
+                  className="btn-outline py-2 px-3 text-sm"
+                  title="Edit medicine"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleDelete(row)}
+                  className="btn-outline py-2 px-3 text-sm text-red-600 border-red-600 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:bg-opacity-20"
+                  title="Delete medicine"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          />
+        )}
       </div>
 
       {/* Add/Edit Medicine Modal */}
