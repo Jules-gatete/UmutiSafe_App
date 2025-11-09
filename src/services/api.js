@@ -52,7 +52,7 @@ export async function createApiClient() {
 const API_BASE_URL = import.meta.env.VITE_API_URL || null;
 
 // Model API (FastAPI) - separate backend serving ML model
-const PREFERRED_MODEL = 'http://localhost:8000';
+const PREFERRED_MODEL = 'https://plankton-app-2c2ae.ondigitalocean.app';
 const DEFAULT_REMOTE_MODEL = 'https://plankton-app-2c2ae.ondigitalocean.app';
 
 let configuredModelUrl = import.meta.env.VITE_MODEL_API_URL;
