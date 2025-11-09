@@ -52,16 +52,32 @@ export async function createApiClient() {
 const API_BASE_URL = import.meta.env.VITE_API_URL || null;
 
 // Model API (FastAPI) - separate backend serving ML model
-const PREFERRED_MODEL = 'https://plankton-app-2c2ae.ondigitalocean.app';
+const LOCAL_MODEL = import.meta.env.DEV ? 'http://localhost:8000' : null;
 const DEFAULT_REMOTE_MODEL = 'https://plankton-app-2c2ae.ondigitalocean.app';
+const LEGACY_MODEL_HOSTS = ['mission-capstone.onrender.com'];
 
 let configuredModelUrl = import.meta.env.VITE_MODEL_API_URL;
 if (configuredModelUrl && typeof configuredModelUrl === 'string') {
   configuredModelUrl = configuredModelUrl.trim().replace(/\/$/, '');
+
+  // Ignore legacy Render host so deployments fall back to the DigitalOcean model.
+  const legacyMatch = (() => {
+    try {
+      const candidate = new URL(configuredModelUrl);
+      return LEGACY_MODEL_HOSTS.includes(candidate.hostname);
+    } catch (err) {
+      const normalized = configuredModelUrl.replace(/^https?:\/\//, '').split('/')[0];
+      return LEGACY_MODEL_HOSTS.includes(normalized);
+    }
+  })();
+
+  if (legacyMatch) {
+    console.warn('Legacy model host detected in VITE_MODEL_API_URL; defaulting to DigitalOcean endpoint.');
+    configuredModelUrl = null;
+  }
 }
 
 const MODEL_API_URL = configuredModelUrl || DEFAULT_REMOTE_MODEL;
-const MODEL_HEALTH_PATH = '/api/health';
 const MODEL_HEALTH_TIMEOUT = 1200;
 
 
@@ -110,23 +126,38 @@ function mapModelPredictionResponse(raw = {}) {
   };
 }
 
-// runtime selection for the model service (prefer local)
+// runtime selection for the model service (prefer local when developing)
 let modelBaseURLPromise = (async () => {
-  const localAvailable = await probeModel(PREFERRED_MODEL).catch(() => false);
-  if (localAvailable) {
-    console.info('Using local model service:', PREFERRED_MODEL);
-    return PREFERRED_MODEL;
+  if (LOCAL_MODEL) {
+    const localAvailable = await probeModel(LOCAL_MODEL).catch(() => false);
+    if (localAvailable) {
+      console.info('Using local model service:', LOCAL_MODEL);
+      return LOCAL_MODEL;
+    }
   }
 
-  const remoteRoot = MODEL_API_URL ? MODEL_API_URL.replace(/\/$/, '') : DEFAULT_REMOTE_MODEL;
-  const remoteAvailable = await probeModel(remoteRoot).catch(() => false);
-  if (remoteAvailable) {
-    console.info('Using remote model service:', remoteRoot);
-    return remoteRoot;
+  const remoteCandidates = [];
+  const configuredRemote = MODEL_API_URL ? MODEL_API_URL.replace(/\/$/, '') : null;
+  const defaultRemote = DEFAULT_REMOTE_MODEL.replace(/\/$/, '');
+
+  if (configuredRemote) {
+    remoteCandidates.push(configuredRemote);
+  }
+  if (!remoteCandidates.includes(defaultRemote)) {
+    remoteCandidates.push(defaultRemote);
   }
 
-  console.warn('Neither local nor remote model endpoints responded to health checks. Proceeding with remote URL anyway.');
-  return remoteRoot;
+  for (const candidate of remoteCandidates) {
+    const available = await probeModel(candidate).catch(() => false);
+    if (available) {
+      console.info('Using remote model service:', candidate);
+      return candidate;
+    }
+  }
+
+  const fallback = remoteCandidates[0] || defaultRemote;
+  console.warn('No model endpoints responded to health checks. Proceeding with fallback URL:', fallback);
+  return fallback;
 })();
 
 // Create axios instance WITHOUT a static baseURL — we'll set it at request time
