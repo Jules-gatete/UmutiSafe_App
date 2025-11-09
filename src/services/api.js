@@ -290,7 +290,10 @@ export const medicinesAPI = {
 
       const modelRoot = (await modelBaseURLPromise) || MODEL_API_URL || PREFERRED_MODEL;
       const root = modelRoot.replace(/\/$/, '');
-      const requestBody = { generic_name: genericName, medicine_name: genericName };
+      const requestBody = {
+        medicine_name: genericName,
+        output_format: 'full'
+      };
       const endpoints = ['/api/predict/text', '/predict/text'];
 
       let response;
@@ -342,8 +345,9 @@ export const medicinesAPI = {
     try {
       const modelRoot = (await modelBaseURLPromise) || MODEL_API_URL || PREFERRED_MODEL;
       const root = modelRoot.replace(/\/$/, '');
-      const formData = new FormData();
-      formData.append('file', imageFile);
+  const formData = new FormData();
+  formData.append('file', imageFile);
+  formData.append('output_format', 'full');
 
       const endpoints = ['/api/predict/image', '/predict/image'];
       let response;
