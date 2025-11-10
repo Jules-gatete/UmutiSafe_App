@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Clock, CheckCircle, Truck, MapPin } from 'lucide-react';
-import StatCard from '../../components/StatCard';
+import { Package, MapPin } from 'lucide-react';
 import SearchBar from '../../components/SearchBar';
 import { chwAPI, pickupsAPI } from '../../services/api';
 
@@ -13,9 +12,12 @@ export default function CHWDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [isReturningVisitor, setIsReturningVisitor] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const displayName = user?.name || user?.fullName || user?.username || '';
+  const greetingName = displayName || 'Community Health Worker';
+  const greetingInitial = (displayName || 'CHW').toString().trim().charAt(0).toUpperCase() || 'C';
 
   useEffect(() => {
     // initial load
@@ -41,6 +43,16 @@ export default function CHWDashboard() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const storageKey = `chwDashboardSeen:${user.id}`;
+    const hasSeen = localStorage.getItem(storageKey) === 'true';
+    setIsReturningVisitor(hasSeen);
+    if (!hasSeen) {
+      localStorage.setItem(storageKey, 'true');
+    }
+  }, [user?.id]);
 
   const fetchData = async ({ background = false } = {}) => {
     try {
@@ -118,23 +130,42 @@ export default function CHWDashboard() {
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-            CHW Dashboard
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Manage pickup requests and help your community dispose of medicines safely
-          </p>
-        </div>
-        {displayName ? (
-          <div className="card px-4 py-3 md:min-w-[220px]">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Logged in as</div>
-            <div className="text-lg font-semibold text-text-dark dark:text-text-light">
-              {displayName}
+      <div className="mb-8">
+  <div className="rounded-3xl bg-gradient-to-r from-primary-blue to-primary-green px-8 py-8 text-white shadow-md">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-5">
+              <div className="hidden sm:flex w-14 h-14 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl font-semibold">
+                {greetingInitial}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-white/70">
+                  {isReturningVisitor ? 'Welcome back' : 'Welcome'}
+                </p>
+                <h1 className="text-4xl font-bold leading-tight">
+                  {greetingName}
+                </h1>
+                <p className="mt-2 text-base text-white/85">
+                  Review requests, schedule pickups, collect safely, and help households dispose of expired and unused medicines the right way.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-center text-sm sm:grid-cols-3">
+              <div className="rounded-xl bg-white/15 px-5 py-4">
+                <div className="text-xs uppercase tracking-wide text-white/70">Pending</div>
+                <div className="text-2xl font-semibold">{pendingRequests.length}</div>
+              </div>
+              <div className="rounded-xl bg-white/15 px-5 py-4">
+                <div className="text-xs uppercase tracking-wide text-white/70">Scheduled</div>
+                <div className="text-2xl font-semibold">{scheduledRequests.length}</div>
+              </div>
+              <div className="rounded-xl bg-white/15 px-5 py-4">
+                <div className="text-xs uppercase tracking-wide text-white/70">Completed</div>
+                <div className="text-2xl font-semibold">{completedRequests.length}</div>
+              </div>
             </div>
           </div>
-        ) : null}
+        </div>
       </div>
 
       {error && (
@@ -142,28 +173,6 @@ export default function CHWDashboard() {
           {error}
         </div>
       )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard
-          icon={Clock}
-          label="Pending Requests"
-          value={pendingRequests.length}
-          color="yellow"
-        />
-        <StatCard
-          icon={Truck}
-          label="Scheduled Pickups"
-          value={scheduledRequests.length}
-          color="blue"
-        />
-        <StatCard
-          icon={CheckCircle}
-          label="Completed"
-          value={completedRequests.length}
-          color="green"
-        />
-      </div>
-
       <div className="mb-8 max-w-xl">
         <SearchBar onSearch={(q) => setQuery(q)} placeholder="Search pickups by name or address..." />
       </div>

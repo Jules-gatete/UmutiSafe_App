@@ -231,13 +231,6 @@ export default function PickupRequests() {
           </div>
         </div>
 
-        <div className="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 rounded-lg p-4 mb-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            <strong>Map Placeholder:</strong> In production, this would display an interactive
-            map showing pickup locations. To integrate: use Leaflet or Google Maps API with
-            markers for each request location.
-          </p>
-        </div>
       </div>
 
       <div className="card">
