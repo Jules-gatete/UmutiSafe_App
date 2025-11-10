@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useStablePolling from '../../hooks/useStablePolling';
 import { Link, useLocation } from 'react-router-dom';
-import { PlusCircle, History, BookOpen, Package, Clock, Truck, CheckCircle, AlertTriangle } from 'lucide-react';
-import StatCard from '../../components/StatCard';
+import { PlusCircle, History, BookOpen, Package } from 'lucide-react';
 import { disposalsAPI, pickupsAPI } from '../../services/api';
 
 export default function Dashboard() {
@@ -12,8 +11,22 @@ export default function Dashboard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [isReturningVisitor, setIsReturningVisitor] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const displayName = user?.name || user?.fullName || user?.username || '';
+  const greetingName = displayName || 'Neighbor';
+  const greetingInitial = (displayName || 'U').toString().trim().charAt(0).toUpperCase() || 'U';
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const storageKey = `userDashboardSeen:${user.id}`;
+    const hasSeen = localStorage.getItem(storageKey) === 'true';
+    setIsReturningVisitor(hasSeen);
+    if (!hasSeen) {
+      localStorage.setItem(storageKey, 'true');
+    }
+  }, [user?.id]);
 
   // Use centralized polling hook; fetchData will be invoked with { background }
   useStablePolling(async ({ background = false } = {}) => {
@@ -114,12 +127,18 @@ export default function Dashboard() {
   };
 
   const totalDisposed = disposals.length;
-  const pendingReview = disposals.filter(d => d.status === 'pending_review').length;
 
   // Align Dashboard pickup count with the Disposal History filter which shows
   // disposals whose `status === 'pickup_requested'`. This ensures the card and
   // the History page display the same number.
   const pickupsRequested = disposals.filter(d => d.status === 'pickup_requested').length;
+  const highRiskItems = disposals.filter(d => d.riskLevel === 'HIGH').length;
+
+  const heroStats = [
+    { label: 'Total Disposals', value: totalDisposed },
+    { label: 'Pickup Requested', value: pickupsRequested },
+    { label: 'High Risk Items', value: highRiskItems }
+  ];
 
   // Ensure recent disposals are sorted by createdAt (most recent first) before slicing
   const recentDisposals = [...disposals]
@@ -154,59 +173,35 @@ export default function Dashboard() {
       )}
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-          Welcome back, {user.name}
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Keep your home safe by disposing of medicines properly
-        </p>
-      </div>
+        <div className="rounded-3xl bg-gradient-to-r from-primary-blue to-primary-green px-8 py-8 text-white shadow-md">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-5">
+              <div className="hidden sm:flex w-14 h-14 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl font-semibold">
+                {greetingInitial}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-white/70">
+                  {isReturningVisitor ? 'Welcome back' : 'Welcome'}
+                </p>
+                <h1 className="text-4xl font-bold leading-tight">
+                  {greetingName}
+                </h1>
+                <p className="mt-2 text-base text-white/85">
+                  Track your disposals, follow personalized guidance, and make informed decisions to keep your household safe from expired and unused medicines.
+                </p>
+              </div>
+            </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-        <Link to="/user/history" className={`block ${getActiveFor('all') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
-          <StatCard
-            icon={Package}
-            label="Total Disposals"
-            value={totalDisposed}
-            color="blue"
-          />
-        </Link>
-
-        <Link to="/user/history?filter=completed" className={`block ${getActiveFor('completed') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
-          <StatCard
-            icon={CheckCircle}
-            label="Completed"
-            value={disposals.filter(d => d.status === 'completed').length}
-            color="green"
-          />
-        </Link>
-
-        <Link to="/user/history?filter=pending_review" className={`block ${getActiveFor('pending_review') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
-          <StatCard
-            icon={Clock}
-            label="Pending Review"
-            value={pendingReview}
-            color="yellow"
-          />
-        </Link>
-
-        <Link to="/user/history?filter=pickup_requested" className={`block ${getActiveFor('pickup_requested') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
-          <StatCard
-            icon={Truck}
-            label="Pickup Requested"
-            value={pickupsRequested}
-            color="teal"
-          />
-        </Link>
-
-        <Link to="/user/history?filter=highRisk" className={`block ${getActiveFor('highRisk') ? 'ring-2 ring-accent-cta rounded' : ''}`}>
-          <StatCard
-            icon={AlertTriangle}
-            label="High Risk Items"
-            value={disposals.filter(d => d.riskLevel === 'HIGH').length}
-            color="red"
-          />
-        </Link>
+            <div className="grid w-full grid-cols-1 gap-4 text-center text-sm sm:grid-cols-3">
+              {heroStats.map((stat) => (
+                <div key={stat.label} className="rounded-xl bg-white/15 px-5 py-4">
+                  <div className="text-xs uppercase tracking-wide text-white/70">{stat.label}</div>
+                  <div className="text-2xl font-semibold">{stat.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

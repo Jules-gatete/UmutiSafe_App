@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, MapPin } from 'lucide-react';
 import SearchBar from '../../components/SearchBar';
-import { chwAPI, pickupsAPI } from '../../services/api';
+import { chwAPI } from '../../services/api';
 
 export default function CHWDashboard() {
   const [requests, setRequests] = useState([]);
@@ -150,7 +150,7 @@ export default function CHWDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-center text-sm sm:grid-cols-3">
+            <div className="grid w-full grid-cols-1 gap-4 text-center text-sm sm:grid-cols-3">
               <div className="rounded-xl bg-white/15 px-5 py-4">
                 <div className="text-xs uppercase tracking-wide text-white/70">Pending</div>
                 <div className="text-2xl font-semibold">{pendingRequests.length}</div>
