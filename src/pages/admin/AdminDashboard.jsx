@@ -189,7 +189,7 @@ export default function AdminDashboard() {
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-         Dashboard
+         Admin Dashboard
         </h1>
         <div className="flex items-center gap-4">
           <p className="text-gray-600 dark:text-gray-400">

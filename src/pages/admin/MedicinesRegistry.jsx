@@ -244,22 +244,8 @@ export default function MedicinesRegistry() {
         Medicines Registry
       </h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Manage Rwanda FDA approved medicines database
+        Rwanda FDA approved medicines database
       </p>
-
-      <div className="card mb-6 border border-primary-blue/40 bg-primary-blue/5 dark:bg-primary-blue/10">
-        <div className="flex items-start gap-3">
-          <Info className="w-6 h-6 text-primary-blue mt-1" />
-          <div className="space-y-1 text-sm text-gray-700 dark:text-gray-200">
-            <p className="font-semibold text-primary-blue dark:text-accent-cta">Registered medicines vs. disposal history</p>
-            <p>
-              This registry stores authoritative medicine records imported from Rwanda FDA data. It is independent of
-              the disposal history pages, which track individual user submissions. Uploading a CSV here updates the
-              master medicine catalogue only and will not modify existing disposal entries.
-            </p>
-          </div>
-        </div>
-      </div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
