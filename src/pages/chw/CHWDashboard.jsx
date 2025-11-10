@@ -15,6 +15,7 @@ export default function CHWDashboard() {
   const [query, setQuery] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const displayName = user?.name || user?.fullName || user?.username || '';
 
   useEffect(() => {
     // initial load
@@ -117,13 +118,23 @@ export default function CHWDashboard() {
 
   return (
     <div className="p-4 lg:p-8 pb-24 lg:pb-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-          CHW Dashboard
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Manage pickup requests and help your community dispose of medicines safely
-        </p>
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
+            CHW Dashboard
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Manage pickup requests and help your community dispose of medicines safely
+          </p>
+        </div>
+        {displayName ? (
+          <div className="card px-4 py-3 md:min-w-[220px]">
+            <div className="text-sm text-gray-600 dark:text-gray-400">Logged in as</div>
+            <div className="text-lg font-semibold text-text-dark dark:text-text-light">
+              {displayName}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {error && (
