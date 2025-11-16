@@ -102,6 +102,25 @@ export default function AddDisposal() {
       });
   };
 
+  const renderInfoGrid = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    return (
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items
+          .filter((item) => item?.value)
+          .map((item) => (
+            <div key={item.label} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+              <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{item.label}</dt>
+              <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100 break-words">{item.value}</dd>
+              {item.helper && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.helper}</p>
+              )}
+            </div>
+          ))}
+      </dl>
+    );
+  };
+
   const formatCategoryLabel = (value) => {
     if (!value) return 'Not classified yet';
     const stringValue = value.toString().trim();
@@ -193,6 +212,34 @@ export default function AddDisposal() {
     : identifiedMedicine;
   const confidenceText = formatPercent(confidenceValue) || '—';
   const inputBadgeLabel = (prediction?.inputType || (imageFile ? 'image' : 'text')).toUpperCase();
+
+  const quickSummaryItems = [
+    {
+      label: 'Identified Medicine',
+      value: pickupDisplayName
+    },
+    {
+      label: 'Disposal Category',
+      value: friendlyCategoryLabel
+    },
+    {
+      label: 'Primary Guidance',
+      value: primaryGuidance || 'Not available yet'
+    },
+    {
+      label: 'Risk Level',
+      value: friendlyRiskLabel
+    },
+    {
+      label: 'Model Confidence',
+      value: confidenceText,
+      helper: categoryConfidence ? 'Based on category classification' : methodConfidence ? 'Based on disposal method confidence' : null
+    },
+    {
+      label: 'Similar Match',
+      value: similarGenericName || 'None suggested'
+    }
+  ];
 
   const buildDisposalPayload = () => {
     if (!prediction) return null;
@@ -659,6 +706,11 @@ export default function AddDisposal() {
               </p>
             </div>
 
+            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+              <h4 className="font-semibold mb-3 text-gray-900 dark:text-gray-100">Quick Summary</h4>
+              {renderInfoGrid(quickSummaryItems)}
+            </div>
+
             <button
               type="button"
               onClick={() => setShowDetails((prev) => !prev)}
@@ -669,12 +721,40 @@ export default function AddDisposal() {
 
             {showDetails && (
               <div className="space-y-6">
-                {disposalRemarks && (
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <h4 className="font-bold mb-2">Model Remarks</h4>
-                    <p className="text-sm md:text-base text-gray-700 dark:text-gray-300">{disposalRemarks}</p>
-                  </div>
-                )}
+                <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <h4 className="font-bold mb-3">Classification Insights</h4>
+                  {renderInfoGrid([
+                    {
+                      label: 'Category',
+                      value: friendlyCategoryLabel
+                    },
+                    {
+                      label: 'Risk Level',
+                      value: friendlyRiskLabel
+                    },
+                    {
+                      label: 'Confidence Score',
+                      value: confidenceText,
+                      helper: confidenceText !== '—' ? 'Higher confidence means more reliable guidance' : null
+                    },
+                    {
+                      label: 'Similarity Distance',
+                      value: similarityDistance !== null ? similarityDistance.toFixed(3) : null,
+                      helper: similarityDistance !== null ? 'Lower distance means a closer match' : null
+                    },
+                    {
+                      label: 'Input Type',
+                      value: inputBadgeLabel
+                    },
+                    {
+                      label: 'Predicted Generic Name',
+                      value: prediction.medicineName || inputGenericName || null
+                    }
+                  ])}
+                  {disposalRemarks && (
+                    <p className="mt-3 text-sm md:text-base text-gray-700 dark:text-gray-300">{disposalRemarks}</p>
+                  )}
+                </div>
 
                 {(disposalMethods.length || dosageFormPredictions.length || manufacturerPredictions.length) && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -727,6 +807,15 @@ export default function AddDisposal() {
                         <li key={`error-${idx}`}>{typeof err === 'string' ? err : JSON.stringify(err)}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {prediction?.predictionDetails && (
+                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-bold mb-2">Technical Metadata</h4>
+                    <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto text-gray-700 dark:text-gray-200">
+{JSON.stringify(prediction.predictionDetails, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>
