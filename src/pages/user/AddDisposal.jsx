@@ -121,6 +121,155 @@ export default function AddDisposal() {
     );
   };
 
+  const toTitleCase = (value) => {
+    if (!value) return '';
+    return value
+      .toString()
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  const pickTopPrediction = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    let best = null;
+
+    for (const item of items) {
+      if (!item) continue;
+      const value = item.value || item.label;
+      if (!value) continue;
+      const confidence = typeof item.confidence === 'number' ? clampConfidence(item.confidence) : null;
+
+      if (!best) {
+        best = { value, confidence };
+        continue;
+      }
+
+      const bestConfidence = typeof best.confidence === 'number' ? best.confidence : -1;
+      const candidateConfidence = typeof confidence === 'number' ? confidence : -1;
+
+      if (candidateConfidence > bestConfidence) {
+        best = { value, confidence };
+      }
+    }
+
+    return best;
+  };
+
+  const buildOcrSummaryItems = (rawOcr) => {
+    if (!rawOcr) return [];
+
+    if (Array.isArray(rawOcr)) {
+      return rawOcr
+        .map((entry, index) => {
+          if (!entry) return null;
+          if (typeof entry === 'string') {
+            const trimmed = entry.trim();
+            return trimmed ? { label: `Line ${index + 1}`, value: trimmed } : null;
+          }
+          if (typeof entry === 'object') {
+            const label = entry.label || entry.field || `Line ${index + 1}`;
+            const value = entry.text || entry.value || entry.content;
+            if (!value) return null;
+            if (Array.isArray(value)) {
+              const joined = value.map((item) => (item ? item.toString().trim() : '')).filter(Boolean).join(', ');
+              return joined ? { label, value: joined } : null;
+            }
+            const normalized = value.toString().trim();
+            return normalized ? { label, value: normalized } : null;
+          }
+          return null;
+        })
+        .filter(Boolean);
+    }
+
+    if (typeof rawOcr === 'object') {
+      const labelMap = {
+        medicine_name: 'Medicine Name',
+        medicine: 'Medicine',
+        medicine_generic_name: 'Medicine Name',
+        generic_name: 'Generic Name',
+        brand_name: 'Brand Name',
+        dosage: 'Dosage',
+        dosage_form: 'Dosage Form',
+        strength: 'Strength',
+        expiry_date: 'Expiry Date',
+        expiry: 'Expiry',
+        batch_number: 'Batch Number',
+        lot_number: 'Lot Number',
+        manufacturer: 'Manufacturer',
+        country_of_manufacture: 'Country of Manufacture',
+        storage_conditions: 'Storage Conditions',
+        instructions: 'Instructions',
+        warnings: 'Warnings'
+      };
+
+      const taken = new Set();
+      const entries = [];
+
+      for (const [rawKey, label] of Object.entries(labelMap)) {
+        if (!(rawKey in rawOcr)) continue;
+        const rawValue = rawOcr[rawKey];
+        if (rawValue === undefined || rawValue === null) continue;
+        const value = Array.isArray(rawValue)
+          ? rawValue
+              .map((item) => (item ? item.toString().trim() : ''))
+              .filter(Boolean)
+              .join(', ')
+          : rawValue.toString().trim();
+        if (!value) continue;
+        entries.push({ label, value });
+        taken.add(rawKey);
+      }
+
+      for (const [key, rawValue] of Object.entries(rawOcr)) {
+        if (taken.has(key)) continue;
+        if (rawValue === undefined || rawValue === null) continue;
+        const value = Array.isArray(rawValue)
+          ? rawValue
+              .map((item) => (item ? item.toString().trim() : ''))
+              .filter(Boolean)
+              .join(', ')
+          : rawValue.toString().trim();
+        if (!value) continue;
+        entries.push({ label: toTitleCase(key), value });
+      }
+
+      return entries;
+    }
+
+    if (typeof rawOcr === 'string') {
+      const trimmed = rawOcr.trim();
+      return trimmed ? [{ label: 'OCR Text', value: trimmed }] : [];
+    }
+
+    return [];
+  };
+
+  const buildJoinedText = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed || null;
+    }
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((entry) => {
+          if (!entry) return '';
+          if (typeof entry === 'string') return entry.trim();
+          if (typeof entry === 'object' && entry.text) return entry.text.toString().trim();
+          return '';
+        })
+        .filter(Boolean);
+      return parts.length ? parts.join('\n') : null;
+    }
+    if (typeof value === 'object') {
+      return null;
+    }
+    return value.toString().trim() || null;
+  };
+
   const formatCategoryLabel = (value) => {
     if (!value) return 'Not classified yet';
     const stringValue = value.toString().trim();
@@ -176,7 +325,9 @@ export default function AddDisposal() {
   const manufacturerPredictions = Array.isArray(modelPredictions.manufacturer)
     ? modelPredictions.manufacturer
     : [];
-  const handlingMethod = modelPredictions.handling_method || '';
+  const handlingMethod = typeof modelPredictions.handling_method === 'string'
+    ? modelPredictions.handling_method.trim()
+    : '';
   const disposalRemarks = modelPredictions.disposal_remarks || '';
   const similarGenericName = modelPredictions.similar_generic_name || '';
   const similarityDistance =
@@ -189,16 +340,17 @@ export default function AddDisposal() {
     typeof normalizedCategory?.confidence === 'number'
       ? clampConfidence(normalizedCategory.confidence)
       : null;
-  const firstMethodWithConfidence = disposalMethods.find(
-    (method) => typeof method?.confidence === 'number'
-  );
-  const methodConfidence = firstMethodWithConfidence
-    ? clampConfidence(firstMethodWithConfidence.confidence)
+  const topDisposalMethodPrediction = pickTopPrediction(disposalMethods);
+  const primaryDisposalMethod = topDisposalMethodPrediction?.value
+    ? topDisposalMethodPrediction.value.trim()
+    : null;
+  const methodConfidence = typeof topDisposalMethodPrediction?.confidence === 'number'
+    ? topDisposalMethodPrediction.confidence
     : null;
   const confidenceValue = categoryConfidence ?? methodConfidence ?? 0;
 
   const predictionHasErrors = Array.isArray(prediction?.errors) && prediction.errors.length > 0;
-  const primaryGuidance = handlingMethod || disposalMethods[0]?.value || '';
+  const primaryGuidance = primaryDisposalMethod || handlingMethod || '';
   const riskLevelValue = prediction ? modelPredictions?.risk_level || prediction.riskLevel : null;
   const friendlyRiskLabel = formatRiskLevel(riskLevelValue);
   const riskBadgeClass = getRiskBadgeClass(riskLevelValue);
@@ -211,7 +363,21 @@ export default function AddDisposal() {
     ? `${identifiedMedicine} (${predictedBrandName})`
     : identifiedMedicine;
   const confidenceText = formatPercent(confidenceValue) || '—';
-  const inputBadgeLabel = (prediction?.inputType || (imageFile ? 'image' : 'text')).toUpperCase();
+  const rawInputType = prediction?.inputType || (imageFile ? 'image' : 'text');
+  const normalizedInputType = typeof rawInputType === 'string' ? rawInputType.toLowerCase() : 'text';
+  const inputBadgeLabel = typeof rawInputType === 'string'
+    ? rawInputType.replace(/[_\s-]+/g, ' ').toUpperCase()
+    : 'TEXT';
+  const isImagePrediction = normalizedInputType.includes('image');
+
+  const topDosageFormPrediction = pickTopPrediction(dosageFormPredictions);
+  const primaryDosageForm = topDosageFormPrediction?.value || null;
+  const topManufacturerPrediction = pickTopPrediction(manufacturerPredictions);
+  const primaryManufacturerRaw = topManufacturerPrediction?.value || null;
+  const primaryManufacturer =
+    primaryManufacturerRaw && !/^(other|unknown)$/i.test(primaryManufacturerRaw.trim())
+      ? primaryManufacturerRaw
+      : null;
 
   const quickSummaryItems = [
     {
@@ -222,24 +388,160 @@ export default function AddDisposal() {
       label: 'Disposal Category',
       value: friendlyCategoryLabel
     },
+    primaryDosageForm
+      ? {
+          label: 'Likely Dosage Form',
+          value: primaryDosageForm
+        }
+      : null,
+    primaryManufacturer
+      ? {
+          label: 'Likely Manufacturer',
+          value: primaryManufacturer
+        }
+      : null,
     {
-      label: 'Primary Guidance',
+      label: 'Primary Disposal Method',
       value: primaryGuidance || 'Not available yet'
     },
-    {
-      label: 'Risk Level',
-      value: friendlyRiskLabel
-    },
+    friendlyRiskLabel !== 'UNKNOWN'
+      ? {
+          label: 'Risk Level',
+          value: friendlyRiskLabel
+        }
+      : null,
     {
       label: 'Model Confidence',
       value: confidenceText,
-      helper: categoryConfidence ? 'Based on category classification' : methodConfidence ? 'Based on disposal method confidence' : null
+      helper: categoryConfidence
+        ? 'Based on category classification'
+        : methodConfidence
+        ? 'Based on disposal method confidence'
+        : null
     },
     {
       label: 'Similar Match',
       value: similarGenericName || 'None suggested'
     }
+  ].filter(Boolean);
+
+  const buildSummarySections = () => {
+    const sections = [];
+    const ensureSentence = (text) => {
+      const trimmed = text ? text.trim().replace(/\s+/g, ' ') : '';
+      if (!trimmed) return null;
+      return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+    };
+
+    const pushSection = (label, sentences = []) => {
+      const body = sentences
+        .map(ensureSentence)
+        .filter(Boolean)
+        .join(' ');
+      if (body) {
+        sections.push({ label, body });
+      }
+    };
+
+    if (identifiedMedicine) {
+      const fragments = [];
+      let overview = `The model identified ${identifiedMedicine}`;
+      if (primaryDosageForm) {
+        overview += ` as ${primaryDosageForm}`;
+      }
+      if (primaryManufacturer) {
+        overview += ` from ${primaryManufacturer}`;
+      }
+      fragments.push(overview);
+      pushSection('What We Found', fragments);
+    }
+
+    if (friendlyCategoryLabel && friendlyCategoryLabel !== 'Not classified yet') {
+      const fragments = [`Classified under ${friendlyCategoryLabel}.`];
+      if (friendlyRiskLabel && friendlyRiskLabel !== 'UNKNOWN') {
+        fragments.push(`Risk level: ${friendlyRiskLabel}.`);
+      }
+      if (confidenceText !== '—') {
+        fragments.push(`Model confidence: ${confidenceText}.`);
+      }
+      pushSection('Why It Matters', fragments);
+    }
+
+    if (primaryDisposalMethod || primaryGuidance) {
+      const fragments = [];
+      if (primaryDisposalMethod) {
+        fragments.push(`Dispose of it using ${primaryDisposalMethod}.`);
+      } else if (primaryGuidance) {
+        fragments.push(primaryGuidance);
+      }
+      pushSection('How To Dispose', fragments);
+    }
+
+    if (handlingMethod && handlingMethod !== primaryDisposalMethod) {
+      pushSection('Handle With Care', [`Before disposal: ${handlingMethod}`]);
+    }
+
+    if (disposalRemarks) {
+      pushSection('Remember', [disposalRemarks]);
+    }
+
+    return sections;
+  };
+
+  const summarySections = buildSummarySections();
+
+  const summaryCallToAction = (() => {
+    if (!prediction) return null;
+    if (friendlyRiskLabel === 'HIGH') {
+      return 'High-risk medicine: connect with a community health worker if you need supervised disposal.';
+    }
+    if (friendlyRiskLabel === 'MEDIUM') {
+      return 'Prefer help carrying this out? Save the guidance or tap "Request CHW Pickup".';
+    }
+    return 'Ready to act? Save this guidance for your records or request a CHW pickup if you want assistance.';
+  })();
+
+  const hasOcrContent = (value) => {
+    if (!value) return false;
+    if (typeof value === 'string') return Boolean(value.trim());
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return false;
+  };
+
+  const rawOcrSourceCandidates = [
+    prediction?.raw?.ocr_summary,
+    prediction?.raw?.ocr_summary_items,
+    prediction?.raw?.ocr?.summary,
+    prediction?.raw?.ocr?.items,
+    prediction?.raw?.ocr_results,
+    prediction?.raw?.ocr_data,
+    prediction?.raw?.ocr_output,
+    prediction?.raw?.ocr_text,
+    prediction?.raw?.ocr
   ];
+
+  const rawOcrSource = rawOcrSourceCandidates.find(hasOcrContent) || null;
+
+  const ocrSummaryItems = buildOcrSummaryItems(rawOcrSource);
+  const ocrLinesJoined = buildJoinedText(prediction?.raw?.ocr_lines);
+  const ocrFullText = (() => {
+    const candidates = [
+      prediction?.raw?.ocr_full_text,
+      prediction?.raw?.ocr_text_full,
+      prediction?.raw?.ocr_raw_text,
+      prediction?.raw?.ocr?.full_text,
+      prediction?.raw?.ocr?.raw_text,
+      buildJoinedText(rawOcrSource),
+      ocrLinesJoined
+    ];
+
+    for (const candidate of candidates) {
+      const stringValue = buildJoinedText(candidate);
+      if (stringValue) return stringValue;
+    }
+    return null;
+  })();
 
   const buildDisposalPayload = () => {
     if (!prediction) return null;
@@ -675,7 +977,9 @@ export default function AddDisposal() {
                 </div>
               </div>
               <div className="flex items-center gap-2 self-start">
-                <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
+                {friendlyRiskLabel !== 'UNKNOWN' && (
+                  <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
+                )}
                 <span className="badge badge-secondary">{inputBadgeLabel}</span>
               </div>
             </div>
@@ -700,10 +1004,24 @@ export default function AddDisposal() {
             </div>
 
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-              <h4 className="font-semibold mb-1 text-gray-900 dark:text-gray-100">Recommended Action</h4>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                {primaryGuidance || 'No specific guidance returned by the model.'}
-              </p>
+              <h4 className="font-semibold mb-3 text-gray-900 dark:text-gray-100">Summary</h4>
+              {summarySections.length ? (
+                <div className="space-y-4">
+                  {summarySections.map((section) => (
+                    <div key={section.label}>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{section.label}</p>
+                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{section.body}</p>
+                    </div>
+                  ))}
+                  {summaryCallToAction && (
+                    <p className="text-sm font-semibold text-primary-blue dark:text-accent-cta">
+                      {summaryCallToAction}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-700 dark:text-gray-300">Disposal summary is not available yet.</p>
+              )}
             </div>
 
             <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
@@ -728,10 +1046,12 @@ export default function AddDisposal() {
                       label: 'Category',
                       value: friendlyCategoryLabel
                     },
-                    {
-                      label: 'Risk Level',
-                      value: friendlyRiskLabel
-                    },
+                    friendlyRiskLabel !== 'UNKNOWN'
+                      ? {
+                          label: 'Risk Level',
+                          value: friendlyRiskLabel
+                        }
+                      : null,
                     {
                       label: 'Confidence Score',
                       value: confidenceText,
@@ -755,6 +1075,18 @@ export default function AddDisposal() {
                     <p className="mt-3 text-sm md:text-base text-gray-700 dark:text-gray-300">{disposalRemarks}</p>
                   )}
                 </div>
+
+                {isImagePrediction && (ocrSummaryItems.length > 0 || ocrFullText) && (
+                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <h4 className="font-bold mb-3">OCR Summary</h4>
+                    {renderInfoGrid(ocrSummaryItems)}
+                    {ocrFullText && (
+                      <pre className="mt-3 text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+{ocrFullText}
+                      </pre>
+                    )}
+                  </div>
+                )}
 
                 {(disposalMethods.length || dosageFormPredictions.length || manufacturerPredictions.length) && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -822,13 +1154,19 @@ export default function AddDisposal() {
             )}
 
             <div className="flex gap-4 flex-nowrap pt-2">
-              <button onClick={handleSaveDisposal} className="btn-secondary flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={handleSaveDisposal}
+                className="btn-secondary flex-1 min-w-0"
+                disabled={loading}
+              >
                 Save Disposal
               </button>
               <button
+                type="button"
                 onClick={handleRequestPickup}
                 className={`btn-primary flex-1 min-w-0 ${!prediction ? 'opacity-50 cursor-not-allowed' : ''}`}
-                disabled={!prediction}
+                disabled={!prediction || loading}
                 title={!prediction ? 'Analyze to enable pickup request' : 'Request CHW pickup'}
               >
                 Request CHW Pickup
