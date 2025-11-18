@@ -29,6 +29,7 @@ export default function CHWInteraction() {
     scheduled: 'badge-info',
     collected: 'badge-info',
     pending: 'badge-warning',
+    pickup_requested: 'badge-info',
     cancelled: 'badge-danger',
     rejected: 'badge-danger',
     not_requested: 'badge-secondary'
@@ -187,6 +188,19 @@ export default function CHWInteraction() {
     );
   }, [query, chws]);
 
+  const pickupLookup = useMemo(() => {
+    const map = new Map();
+    pickups.forEach((pickup) => {
+      if (pickup?.id) {
+        map.set(pickup.id, pickup);
+      }
+      if (pickup?.disposalId) {
+        map.set(`disposal:${pickup.disposalId}`, pickup);
+      }
+    });
+    return map;
+  }, [pickups]);
+
   const [selectedCHW, setSelectedCHW] = useState(null);
   const [formData, setFormData] = useState({
     medicineName: prefillData.medicineName || '',
@@ -324,7 +338,12 @@ export default function CHWInteraction() {
 
   const formattedDisposals = useMemo(() => {
     return disposals.map((disposal) => {
-      const pickupStatus = disposal.pickupRequest?.status || (disposal.pickupRequestId ? 'pending' : 'not_requested');
+      const linkedPickup =
+        disposal.pickupRequest ||
+        pickupLookup.get(disposal.pickupRequestId) ||
+        pickupLookup.get(`disposal:${disposal.id}`);
+
+      const pickupStatus = linkedPickup?.status || (disposal.pickupRequestId ? 'pickup_requested' : 'not_requested');
 
       return {
         ...disposal,
@@ -337,7 +356,7 @@ export default function CHWInteraction() {
           : '—'
       };
     });
-  }, [disposals]);
+  }, [disposals, pickupLookup]);
 
   const disposalColumns = [
     {

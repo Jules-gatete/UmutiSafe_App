@@ -5,28 +5,54 @@ import { PlusCircle, History, BookOpen, Package } from 'lucide-react';
 import { disposalsAPI, pickupsAPI } from '../../services/api';
 
 export default function Dashboard() {
+  const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+  const user = rawUser ? JSON.parse(rawUser) : {};
+
+  const storageKeyBase = user?.id ? `userDashboardSeen:${user.id}` : null;
+
   const [disposals, setDisposals] = useState([]);
   const [pickups, setPickups] = useState([]);
   // Use initialLoading/refreshing so background polls don't show big loader
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [isReturningVisitor, setIsReturningVisitor] = useState(false);
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [isReturningVisitor, setIsReturningVisitor] = useState(() => {
+    if (user?.hasLoggedBefore) return true;
+    if (!storageKeyBase) return false;
+    try {
+      return localStorage.getItem(storageKeyBase) === 'true';
+    } catch (err) {
+      return false;
+    }
+  });
   const displayName = user?.name || user?.fullName || user?.username || '';
   const greetingName = displayName || 'Neighbor';
   const greetingInitial = (displayName || 'U').toString().trim().charAt(0).toUpperCase() || 'U';
 
   useEffect(() => {
-    if (!user?.id) return;
-    const storageKey = `userDashboardSeen:${user.id}`;
-    const hasSeen = localStorage.getItem(storageKey) === 'true';
-    setIsReturningVisitor(hasSeen);
-    if (!hasSeen) {
-      localStorage.setItem(storageKey, 'true');
+    if (!storageKeyBase) return;
+
+    if (user?.hasLoggedBefore) {
+      setIsReturningVisitor(true);
+      try {
+        localStorage.setItem(storageKeyBase, 'true');
+      } catch (err) {
+        // ignore storage errors
+      }
+      return;
     }
-  }, [user?.id]);
+
+    let hasSeen = false;
+    try {
+      hasSeen = localStorage.getItem(storageKeyBase) === 'true';
+      if (!hasSeen) {
+        localStorage.setItem(storageKeyBase, 'true');
+      }
+    } catch (err) {
+      hasSeen = false;
+    }
+    setIsReturningVisitor(hasSeen);
+  }, [storageKeyBase, user?.hasLoggedBefore]);
 
   // Use centralized polling hook; fetchData will be invoked with { background }
   useStablePolling(async ({ background = false } = {}) => {
