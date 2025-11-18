@@ -33,7 +33,7 @@ export default function ManageUsers() {
 
   const fetchUsers = async () => {
     try {
-      const response = await adminAPI.getUsers();
+      const response = await adminAPI.getUsers({ page: 1, limit: 250 });
       if (response.success) {
         setUsers(response.data);
       }
