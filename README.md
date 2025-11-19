@@ -6,7 +6,9 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
  **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umuti-safe-app.vercel.app/login)
  
  **Backend Deployed API:**[https://umutisafe-backend.onrender.com](https://umutisafe-backend.onrender.com) /
+ 
  **Backend Repo:** [https://github.com/Jules-gatete/UmutiSafe_Backend](https://github.com/Jules-gatete/UmutiSafe_Backend)
+ 
  **AI Model Repository/Deployed API Link:** [https://github.com/Jules-gatete/FastAPI.git](https://github.com/Jules-gatete/FastAPI.git) / [https://plankton-app-2c2ae.ondigitalocean.app/docs](https://plankton-app-2c2ae.ondigitalocean.app/docs)
 
 ##  **Video demo**
