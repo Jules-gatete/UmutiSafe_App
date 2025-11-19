@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Upload, Loader } from 'lucide-react';
 import Input from '../../components/FormFields/Input';
+import Modal from '../../components/Modal';
 import { medicinesAPI, disposalsAPI } from '../../services/api';
-import SearchBar from '../../components/SearchBar';
 
 export default function AddDisposal() {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export default function AddDisposal() {
   const [suggestions, setSuggestions] = useState([]);
 
   const [showDetails, setShowDetails] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   const clampConfidence = (value) => {
     if (typeof value !== 'number' || Number.isNaN(value)) return null;
@@ -55,13 +56,13 @@ export default function AddDisposal() {
           .filter(Boolean)
           .map((entry) => (
             <li key={entry.key} className="flex items-center justify-between gap-2">
-              <span className="font-medium text-sm md:text-base break-words">{entry.label}</span>
+              <span className="font-medium text-base md:text-lg break-words">{entry.label}</span>
               {typeof entry.confidence === 'number' && (
-              <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                <span className="text-sm md:text-base text-gray-500 dark:text-gray-400">
                   {formatPercent(entry.confidence)}
-              </span>
-            )}
-          </li>
+                </span>
+              )}
+            </li>
           ))}
       </ul>
     );
@@ -111,9 +112,9 @@ export default function AddDisposal() {
           .map((item) => (
             <div key={item.label} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
               <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{item.label}</dt>
-              <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100 break-words">{item.value}</dd>
+              <dd className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100 break-words">{item.value}</dd>
               {item.helper && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.helper}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{item.helper}</p>
               )}
             </div>
           ))}
@@ -378,6 +379,11 @@ export default function AddDisposal() {
     primaryManufacturerRaw && !/^(other|unknown)$/i.test(primaryManufacturerRaw.trim())
       ? primaryManufacturerRaw
       : null;
+  const normalizedConfidenceValue = clampConfidence(confidenceValue);
+  const confidencePercent =
+    typeof normalizedConfidenceValue === 'number'
+      ? Math.round(normalizedConfidenceValue * 100)
+      : null;
 
   const quickSummaryItems = [
     {
@@ -500,6 +506,10 @@ export default function AddDisposal() {
     }
     return 'Ready to act? Save this guidance for your records or request a CHW pickup if you want assistance.';
   })();
+
+  const summaryIntro = summarySections.find((section) => section.label === 'What We Found')?.body;
+
+  const confidenceDisplay = confidenceText && confidenceText !== '—' ? confidenceText : 'Pending';
 
   const hasOcrContent = (value) => {
     if (!value) return false;
@@ -638,6 +648,7 @@ export default function AddDisposal() {
 
     setLoading(true);
     setServerError(null);
+    setOverlayOpen(false);
     try {
       const result = await medicinesAPI.predictFromText({
         genericName: formData.generic_name,
@@ -646,6 +657,7 @@ export default function AddDisposal() {
       if (result && result.success) {
         setPrediction(result.data);
         setShowDetails(false);
+        setOverlayOpen(true);
         const predictedGeneric =
           result.data?.medicineName ||
           result.data?.predictions?.input_generic_name ||
@@ -661,6 +673,7 @@ export default function AddDisposal() {
         setServerError(msg);
         setPrediction(null);
         setShowDetails(false);
+        setOverlayOpen(false);
       }
     } catch (error) {
       console.error('Prediction error:', error);
@@ -670,41 +683,44 @@ export default function AddDisposal() {
     }
   };
 
- const handlePredictFromImage = async () => {
-  if (!imageFile) {
-    alert('Please upload an image first.');
-    return;
-  }
-
-  setLoading(true);
-  setServerError(null);
-  try {
-    const result = await medicinesAPI.predictFromImage(imageFile);
-
-    if (result.success) {
-      const predictedGeneric =
-        result.data?.medicineName ||
-        result.data?.predictions?.input_generic_name ||
-        '';
-
-      setFormData({
-        generic_name: predictedGeneric,
-      });
-      setPrediction(result.data);
-      setShowDetails(false);
-    } else {
-      const msg = result?.error?.message || result?.error || 'Image prediction failed. Please try again.';
-      setServerError(msg);
-      setPrediction(null);
-      setShowDetails(false);
+  const handlePredictFromImage = async () => {
+    if (!imageFile) {
+      alert('Please upload an image first.');
+      return;
     }
-  } catch (error) {
-    console.error('Image prediction error:', error);
-    setServerError(error?.message || 'Failed to process image. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+
+    setLoading(true);
+    setServerError(null);
+    setOverlayOpen(false);
+    try {
+      const result = await medicinesAPI.predictFromImage(imageFile);
+
+      if (result.success) {
+        const predictedGeneric =
+          result.data?.medicineName ||
+          result.data?.predictions?.input_generic_name ||
+          '';
+
+        setFormData({
+          generic_name: predictedGeneric,
+        });
+        setPrediction(result.data);
+        setShowDetails(false);
+        setOverlayOpen(true);
+      } else {
+        const msg = result?.error?.message || result?.error || 'Image prediction failed. Please try again.';
+        setServerError(msg);
+        setPrediction(null);
+        setShowDetails(false);
+        setOverlayOpen(false);
+      }
+    } catch (error) {
+      console.error('Image prediction error:', error);
+      setServerError(error?.message || 'Failed to process image. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSaveDisposal = async () => {
     if (!prediction) {
@@ -723,6 +739,7 @@ export default function AddDisposal() {
 
     try {
       setLoading(true);
+      setOverlayOpen(false);
 
       // If an image was used for prediction and is available, send it as multipart/form-data
       if (imageFile) {
@@ -741,7 +758,7 @@ export default function AddDisposal() {
           setServerError(msg);
         }
       } else {
-  const result = await disposalsAPI.create(disposal);
+        const result = await disposalsAPI.create(disposal);
 
         if (result && result.success) {
           alert('Disposal saved successfully!');
@@ -780,6 +797,7 @@ export default function AddDisposal() {
 
       try {
         let result;
+        setOverlayOpen(false);
         if (imageFile) {
           const payload = { ...disposal, file: imageFile };
           result = await disposalsAPI.create(payload);
@@ -814,130 +832,141 @@ export default function AddDisposal() {
     })();
   };
 
-  const handlePageSearch = async (q) => {
-    try {
-      const res = await medicinesAPI.search(q);
-      if (res.success) setSuggestions(res.data);
-    } catch (error) {
-      console.error('Search error:', error);
-    }
-  };
-
   return (
-    <div className="p-4 lg:p-8 pb-24 lg:pb-8 max-w-5xl mx-auto">
-      <div className="mb-6">
-        {/* page-specific search */}
-        <SearchBar onSearch={handlePageSearch} placeholder="Search medicines for this form..." />
-      </div>
-
-      <h1 className="text-3xl font-bold text-text-dark dark:text-text-light mb-2">
-        Add New Disposal
-      </h1>
-      <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Provide a medicine name to generate tailored disposal guidance
-      </p>
-
-      {serverError && (
-        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
-          {serverError}
-        </div>
-      )}
-
-      {/* Make the upload card and manual form parallel on md+ screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h2 className="text-xl font-bold mb-4">Option 1: Upload Image</h2>
-          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
-            {imagePreview ? (
-              <div className="mb-4">
-                <img
-                  src={imagePreview}
-                  alt="Medicine preview"
-                  className="max-h-44 w-auto mx-auto rounded-lg object-contain"
-                />
-              </div>
-            ) : (
-              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-            )}
-            <label className="btn-outline cursor-pointer inline-block">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="hidden"
-              />
-              {imagePreview ? 'Change Image' : 'Upload Image'}
-            </label>
-            {imageFile && (
-              <button
-                onClick={handlePredictFromImage}
-                disabled={loading}
-                className="btn-primary ml-4"
-              >
-                {loading ? (
-                  <Loader className="w-5 h-5 animate-spin inline" />
-                ) : (
-                  'Scan Image'
-                )}
-              </button>
-            )}
-            {prediction && prediction.inputType === 'image' && (
-              <p
-                className={`mt-4 text-sm ${
-                  predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'
-                }`}
-              >
-                {predictionHasErrors
-                  ? 'Image prediction returned warnings. Review below.'
-                  : 'Image prediction ready. Review the model output below.'}
-              </p>
-            )}
+    <div className="min-h-screen bg-gradient-to-br from-primary-blue/10 via-white to-primary-green/10 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <header className="rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-primary-blue/20 dark:border-primary-green/20 shadow-xl backdrop-blur">
+          <div className="p-8 sm:p-10 space-y-4">
+            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-blue dark:text-primary-green">
+              <span className="block h-2 w-2 rounded-full bg-primary-blue dark:bg-primary-green" />
+              Guided Disposal Workspace
+            </p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100">
+              Add New Disposal
+            </h1>
+            <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 max-w-2xl">
+              Upload a medicine photo or type its name to generate tailored disposal guidance. We will highlight the safest handling approach and help you act on the results immediately.
+            </p>
           </div>
-        </div>
+        </header>
+        {serverError && (
+          <div className="rounded-2xl border border-red-200/70 bg-red-50/80 dark:border-red-800 dark:bg-red-900/50 text-red-700 dark:text-red-200 px-6 py-4 shadow-lg">
+            {serverError}
+          </div>
+        )}
 
-        {/* Manual entry form - simplified to a single name field */}
-        <form onSubmit={handlePredictFromText} className="card">
-          <h2 className="text-xl font-bold mb-4">Option 2: Type Medicine Name</h2>
-
-          <div className="space-y-4">
-            <div className="relative">
-              <Input
-                label="Medicine Name"
-                id="generic_name"
-                name="generic_name"
-                value={formData.generic_name}
-                onChange={handleInputChange}
-                placeholder="e.g., Paracetamol"
-                required
-                autoComplete="off"
-              />
-              {suggestions.length > 0 && (
-                <div className="absolute z-10 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                  {suggestions.map((med) => (
-                    <button
-                      key={med.id}
-                      type="button"
-                      onClick={() => handleSuggestionClick(med)}
-                      className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <div className="font-medium">{med.genericName}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {med.brandName}
-                        {med.dosageForm ? ` • ${med.dosageForm}` : ''}
-                      </div>
-                    </button>
-                  ))}
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-3xl border border-primary-blue/20 dark:border-primary-green/20 bg-white/85 dark:bg-gray-900/80 shadow-xl backdrop-blur-sm p-6 sm:p-8 space-y-5 transition-transform duration-200 hover:-translate-y-1 hover:shadow-2xl">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Upload Medicine Image</h2>
+            <p className="text-base text-gray-600 dark:text-gray-400">
+              Let the assistant read the label for you. We’ll capture the text and match it to known medicines automatically.
+            </p>
+            <div className="rounded-2xl border-2 border-dashed border-primary-blue/30 dark:border-primary-green/40 bg-white/60 dark:bg-gray-900/60 px-6 py-8 text-center space-y-4">
+              {imagePreview ? (
+                <div className="mx-auto max-w-xs overflow-hidden rounded-2xl border border-white/40 shadow-lg">
+                  <img
+                    src={imagePreview}
+                    alt="Medicine preview"
+                    className="h-52 w-full object-cover"
+                  />
                 </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-primary-blue/70 dark:text-primary-green/70">
+                  <Upload className="h-12 w-12" />
+                  <p className="text-base font-medium">Drop an image here or upload from your device</p>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-primary-blue/40 dark:border-primary-green/40 px-6 py-3 text-base font-semibold text-primary-blue dark:text-primary-green shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
+                  {imagePreview ? 'Change Image' : 'Upload Image'}
+                </label>
+                {imageFile && (
+                  <button
+                    type="button"
+                    onClick={handlePredictFromImage}
+                    disabled={loading}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-blue text-white px-6 py-3 text-base font-semibold shadow-lg shadow-primary-blue/30 hover:shadow-primary-blue/50 transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader className="h-4 w-4 animate-spin" />
+                        Processing…
+                      </>
+                    ) : (
+                      'Scan Image'
+                    )}
+                  </button>
+                )}
+              </div>
+              {prediction && prediction.inputType === 'image' && (
+                <p
+                  className={`text-xs font-medium ${
+                    predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-primary-blue dark:text-primary-green'
+                  }`}
+                >
+                  {predictionHasErrors
+                    ? 'Image prediction returned warnings. Review the guidance card.'
+                    : 'Image prediction ready. View the disposal guidance.'}
+                </p>
               )}
             </div>
           </div>
 
-          <div className="mt-4">
-            <button type="submit" disabled={loading} className="btn-primary w-full">
+          <form
+            onSubmit={handlePredictFromText}
+            className="rounded-3xl border border-primary-blue/20 dark:border-primary-green/20 bg-white/85 dark:bg-gray-900/80 shadow-xl backdrop-blur-sm p-6 sm:p-8 space-y-5 transition-transform duration-200 hover:-translate-y-1 hover:shadow-2xl"
+          >
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Type Medicine Name</h2>
+            <p className="text-base text-gray-600 dark:text-gray-400">
+              Prefer to type it in? Start with the generic name and we’ll autocomplete the rest.
+            </p>
+            <div className="space-y-4">
+              <div className="relative">
+                <Input
+                  label="Medicine Name"
+                  id="generic_name"
+                  name="generic_name"
+                  value={formData.generic_name}
+                  onChange={handleInputChange}
+                  placeholder="e.g., Paracetamol"
+                  required
+                  autoComplete="off"
+                />
+                {suggestions.length > 0 && (
+                  <div className="absolute z-20 w-full rounded-2xl border border-primary-blue/30 dark:border-primary-green/30 bg-white/95 dark:bg-gray-900/95 shadow-2xl mt-2 max-h-52 overflow-y-auto">
+                    {suggestions.map((med) => (
+                      <button
+                        key={med.id}
+                        type="button"
+                        onClick={() => handleSuggestionClick(med)}
+                        className="w-full px-4 py-3 text-left transition-colors hover:bg-primary-blue/10 dark:hover:bg-primary-green/10"
+                      >
+                        <div className="font-semibold text-gray-900 dark:text-gray-100">{med.genericName}</div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          {med.brandName}
+                          {med.dosageForm ? ` • ${med.dosageForm}` : ''}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary-blue text-white px-6 py-3 text-base font-semibold shadow-lg shadow-primary-blue/30 hover:shadow-primary-blue/50 transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               {loading ? (
                 <>
-                  <Loader className="w-5 h-5 animate-spin inline mr-2" />
-                  Analyzing...
+                  <Loader className="h-4 w-4 animate-spin" />
+                  Analyzing…
                 </>
               ) : (
                 'Get Disposal Guidance'
@@ -945,166 +974,285 @@ export default function AddDisposal() {
             </button>
             {prediction && prediction.inputType === 'text' && (
               <p
-                className={`mt-3 text-center text-sm ${
-                  predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'
+                className={`text-xs text-center font-medium ${
+                  predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-primary-blue dark:text-primary-green'
                 }`}
               >
                 {predictionHasErrors
-                  ? 'Text prediction returned warnings. Review below.'
-                  : 'Text prediction ready. Review the model output below.'}
+                  ? 'Text prediction returned warnings. Review the guidance card.'
+                  : 'Text prediction ready. View the disposal guidance.'}
               </p>
             )}
-          </div>
-        </form>
+          </form>
+        </section>
+
+        {prediction && (
+          <section className="relative overflow-hidden rounded-3xl border border-primary-blue/20 dark:border-primary-green/20 bg-white/85 dark:bg-gray-900/80 shadow-2xl px-6 py-8 sm:px-8 sm:py-10">
+            <div className="absolute -top-24 right-0 h-64 w-64 rounded-full bg-primary-blue/15 dark:bg-primary-green/15 blur-3xl" />
+            <div className="absolute -bottom-24 left-[-3rem] h-64 w-64 rounded-full bg-primary-green/10 dark:bg-primary-blue/10 blur-3xl" />
+            <div className="relative space-y-6">
+              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                <div className="flex items-start gap-3">
+                  {predictionHasErrors ? (
+                    <AlertTriangle className="h-9 w-9 text-warning flex-shrink-0" />
+                  ) : (
+                    <CheckCircle className="h-9 w-9 text-primary-green flex-shrink-0" />
+                  )}
+                  <div className="space-y-2">
+                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Guidance Ready</h2>
+                    <p className="text-base text-gray-600 dark:text-gray-300">
+                      {summaryIntro || `Model identified ${identifiedMedicine} and prepared guidance for you.`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-primary-blue/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-blue dark:bg-primary-green/10 dark:text-primary-green">
+                    {inputBadgeLabel}
+                  </span>
+                  {friendlyRiskLabel !== 'UNKNOWN' && (
+                    <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
+                  )}
+                  <span className="inline-flex items-center rounded-full border border-primary-blue/30 dark:border-primary-green/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-blue dark:text-primary-green">
+                    Confidence {confidenceDisplay}
+                  </span>
+                </div>
+              </div>
+
+              {summaryCallToAction && (
+                <p className="text-base font-semibold text-primary-blue dark:text-primary-green">
+                  {summaryCallToAction}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOverlayOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-blue text-white px-6 py-3 text-base font-semibold shadow-lg shadow-primary-blue/30 hover:shadow-primary-blue/50 transition-transform duration-200 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary-blue/40"
+                >
+                  View Disposal Guidance
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDisposal}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-primary-blue/30 dark:border-primary-green/30 bg-white/80 dark:bg-gray-900/70 px-6 py-3 text-base font-semibold text-primary-blue dark:text-primary-green shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Saving…' : 'Save Disposal'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRequestPickup}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-primary-blue/40 dark:border-primary-green/40 px-6 py-3 text-base font-semibold text-primary-blue dark:text-primary-green shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Request CHW Pickup
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
-      {/* Output card placed below the parallel inputs */}
-      {prediction && (
-        <div className="card mt-6 border border-primary-blue dark:border-accent-cta">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="flex items-start gap-3">
-                {predictionHasErrors ? (
-                  <AlertTriangle className="w-8 h-8 text-warning flex-shrink-0" />
-                ) : (
-                  <CheckCircle className="w-8 h-8 text-primary-green flex-shrink-0" />
-                )}
-                <div>
-                  <h3 className="text-xl font-bold mb-1">Disposal Guidance Preview</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
-                    {`Model identified ${identifiedMedicine} and prepared guidance for you.`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 self-start">
-                {friendlyRiskLabel !== 'UNKNOWN' && (
-                  <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
-                )}
-                <span className="badge badge-secondary">{inputBadgeLabel}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Category</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{friendlyCategoryLabel}</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Confidence</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1">{confidenceText}</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-                <p className="text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wide">Warnings</p>
-                <p
-                  className={`text-sm font-semibold mt-1 ${predictionHasErrors ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'}`}
-                >
-                  {predictionHasErrors ? 'Review warnings' : 'None detected'}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-              <h4 className="font-semibold mb-3 text-gray-900 dark:text-gray-100">Summary</h4>
-              {summarySections.length ? (
-                <div className="space-y-4">
-                  {summarySections.map((section) => (
-                    <div key={section.label}>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{section.label}</p>
-                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{section.body}</p>
-                    </div>
-                  ))}
-                  {summaryCallToAction && (
-                    <p className="text-sm font-semibold text-primary-blue dark:text-accent-cta">
-                      {summaryCallToAction}
+      <Modal
+        isOpen={overlayOpen && Boolean(prediction)}
+        onClose={() => {
+          setOverlayOpen(false);
+          setShowDetails(false);
+        }}
+        title="Disposal Guidance Preview"
+        size="xl"
+      >
+        {prediction && (
+          <div className="space-y-8">
+            <div className="relative overflow-hidden rounded-3xl border border-primary-blue/40 bg-gradient-to-br from-primary-blue via-primary-blue/80 to-primary-green text-white shadow-2xl">
+              <div className="absolute inset-0 opacity-80 bg-[radial-gradient(circle_farthest-corner_at_80%_20%,rgba(255,255,255,0.3),transparent_55%)]" />
+              <div className="relative space-y-6 p-6 sm:p-8">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-3 max-w-3xl">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                      Disposal Guidance Preview
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-semibold leading-snug">{pickupDisplayName}</h3>
+                    <p className="text-base sm:text-lg text-white/85 leading-relaxed">
+                      {summaryIntro || `Model identified ${identifiedMedicine} from your submission. Review the predicted disposal path below.`}
                     </p>
-                  )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide">
+                    <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-white">{inputBadgeLabel}</span>
+                    {friendlyRiskLabel !== 'UNKNOWN' && (
+                      <span className={`badge ${riskBadgeClass}`}>{friendlyRiskLabel}</span>
+                    )}
+                    <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-white">
+                      Confidence {confidenceDisplay}
+                    </span>
+                    {similarGenericName && (
+                      <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-white/85">
+                        Similar: {similarGenericName}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-700 dark:text-gray-300">Disposal summary is not available yet.</p>
-              )}
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/25 bg-white/10 p-4 space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-white/70">Category</p>
+                    <p className="text-lg font-semibold text-white">{friendlyCategoryLabel}</p>
+                    {friendlyCategoryLabel === 'Not classified yet' && (
+                      <p className="text-xs text-white/70">
+                        We will assign a disposal category once the model confirms a match.
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-white/25 bg-white/10 p-4 space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-white/70">Confidence</p>
+                    <p className="text-lg font-semibold text-white">{confidenceDisplay}</p>
+                    {confidencePercent !== null && (
+                      <div className="h-2 rounded-full bg-white/20">
+                        <div
+                          className="h-full rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.45)]"
+                          style={{ width: `${confidencePercent}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="text-sm text-white/80">
+                      {confidenceDisplay === 'Pending'
+                        ? 'Confidence will appear once the model confirms a stronger match.'
+                        : 'Higher confidence indicates a close match to known medicines.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/25 bg-white/10 p-4 space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-white/70">Dosage Form</p>
+                    <p className="text-lg font-semibold text-white">
+                      {primaryDosageForm || 'Not detected yet'}
+                    </p>
+                    <p className="text-sm text-white/80 leading-relaxed">
+                      {primaryDosageForm
+                        ? 'Likely dosage form inferred from the prediction results.'
+                        : 'Scan once more or refine the name to detect the dosage form.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-              <h4 className="font-semibold mb-3 text-gray-900 dark:text-gray-100">Quick Summary</h4>
-              {renderInfoGrid(quickSummaryItems)}
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+              <div className="space-y-4 p-6">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Summary</h4>
+                {summarySections.length ? (
+                  <div className="space-y-4">
+                    {summarySections.map((section) => (
+                      <div key={section.label} className="space-y-1">
+                        <p className="text-base font-semibold text-gray-900 dark:text-gray-100">{section.label}</p>
+                        <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed">{section.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-base text-gray-600 dark:text-gray-300">
+                    Disposal summary is not available yet. Expand the technical insights for raw model output.
+                  </p>
+                )}
+                {summaryCallToAction && (
+                  <p className="text-sm font-semibold text-primary-blue dark:text-primary-green">
+                    {summaryCallToAction}
+                  </p>
+                )}
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowDetails((prev) => !prev)}
-              className="btn-outline w-full md:w-auto"
-            >
-              {showDetails ? 'Hide detailed model output' : 'Show detailed model output'}
-            </button>
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+              <div className="space-y-4 p-6">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Quick Summary</h4>
+                {renderInfoGrid(quickSummaryItems)}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-base text-gray-600 dark:text-gray-300">
+                Need the technical breakdown?
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowDetails((prev) => !prev)}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-primary-blue/30 dark:border-primary-green/30 px-6 py-3 text-base font-semibold text-primary-blue dark:text-primary-green shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5"
+              >
+                {showDetails ? 'Hide technical insights' : 'Show technical insights'}
+              </button>
+            </div>
 
             {showDetails && (
               <div className="space-y-6">
-                <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                  <h4 className="font-bold mb-3">Classification Insights</h4>
-                  {renderInfoGrid([
-                    {
-                      label: 'Category',
-                      value: friendlyCategoryLabel
-                    },
-                    friendlyRiskLabel !== 'UNKNOWN'
-                      ? {
-                          label: 'Risk Level',
-                          value: friendlyRiskLabel
-                        }
-                      : null,
-                    {
-                      label: 'Confidence Score',
-                      value: confidenceText,
-                      helper: confidenceText !== '—' ? 'Higher confidence means more reliable guidance' : null
-                    },
-                    {
-                      label: 'Similarity Distance',
-                      value: similarityDistance !== null ? similarityDistance.toFixed(3) : null,
-                      helper: similarityDistance !== null ? 'Lower distance means a closer match' : null
-                    },
-                    {
-                      label: 'Input Type',
-                      value: inputBadgeLabel
-                    },
-                    {
-                      label: 'Predicted Generic Name',
-                      value: prediction.medicineName || inputGenericName || null
-                    }
-                  ])}
-                  {disposalRemarks && (
-                    <p className="mt-3 text-sm md:text-base text-gray-700 dark:text-gray-300">{disposalRemarks}</p>
-                  )}
+                <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+                  <div className="space-y-4 p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Classification Insights</h4>
+                    {renderInfoGrid([
+                      {
+                        label: 'Category',
+                        value: friendlyCategoryLabel
+                      },
+                      friendlyRiskLabel !== 'UNKNOWN'
+                        ? {
+                            label: 'Risk Level',
+                            value: friendlyRiskLabel
+                          }
+                        : null,
+                      {
+                        label: 'Confidence Score',
+                        value: confidenceText,
+                        helper: confidenceText !== '—' ? 'Higher confidence means more reliable guidance' : null
+                      },
+                      {
+                        label: 'Similarity Distance',
+                        value: similarityDistance !== null ? similarityDistance.toFixed(3) : null,
+                        helper: similarityDistance !== null ? 'Lower distance means a closer match' : null
+                      },
+                      {
+                        label: 'Input Type',
+                        value: inputBadgeLabel
+                      },
+                      {
+                        label: 'Predicted Generic Name',
+                        value: prediction.medicineName || inputGenericName || null
+                      }
+                    ])}
+                    {disposalRemarks && (
+                      <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed">{disposalRemarks}</p>
+                    )}
+                  </div>
                 </div>
 
                 {isImagePrediction && (ocrSummaryItems.length > 0 || ocrFullText) && (
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <h4 className="font-bold mb-3">OCR Summary</h4>
-                    {renderInfoGrid(ocrSummaryItems)}
-                    {ocrFullText && (
-                      <pre className="mt-3 text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-{ocrFullText}
-                      </pre>
-                    )}
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+                    <div className="space-y-4 p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">OCR Summary</h4>
+                      {renderInfoGrid(ocrSummaryItems)}
+                      {ocrFullText && (
+                        <pre className="mt-3 max-h-60 overflow-y-auto rounded-xl bg-gray-100 dark:bg-gray-800 p-4 text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                          {ocrFullText}
+                        </pre>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {(disposalMethods.length || dosageFormPredictions.length || manufacturerPredictions.length) && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid gap-4 lg:grid-cols-3">
                     {disposalMethods.length > 0 && (
-                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                        <h4 className="font-bold mb-2">Recommended Disposal Methods</h4>
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-md p-5">
+                        <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Recommended Disposal Methods</h4>
                         {renderConfidenceList(disposalMethods, 'No disposal methods available.')}
                       </div>
                     )}
                     {dosageFormPredictions.length > 0 && (
-                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                        <h4 className="font-bold mb-2">Likely Dosage Forms</h4>
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-md p-5">
+                        <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Likely Dosage Forms</h4>
                         {renderConfidenceList(dosageFormPredictions, 'No dosage form predictions returned.')}
                       </div>
                     )}
                     {manufacturerPredictions.length > 0 && (
-                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                        <h4 className="font-bold mb-2">Possible Manufacturers</h4>
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-md p-5">
+                        <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Possible Manufacturers</h4>
                         {renderConfidenceList(manufacturerPredictions, 'No manufacturer predictions returned.')}
                       </div>
                     )}
@@ -1112,69 +1260,55 @@ export default function AddDisposal() {
                 )}
 
                 {prediction.analysis && (
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <h4 className="font-bold mb-2">Detailed Analysis</h4>
-                    <div className="space-y-2">
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+                    <div className="space-y-2 p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Detailed Analysis</h4>
                       {renderAnalysisContent(prediction.analysis)}
                     </div>
                   </div>
                 )}
 
                 {prediction.messages && prediction.messages.length > 0 && (
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <h4 className="font-bold mb-2">Model Messages</h4>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
-                      {prediction.messages.map((message, idx) => (
-                        <li key={`message-${idx}`}>{message}</li>
-                      ))}
-                    </ul>
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+                    <div className="p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Model Messages</h4>
+                      <ul className="list-disc list-inside space-y-1 text-base text-gray-700 dark:text-gray-300">
+                        {prediction.messages.map((message, idx) => (
+                          <li key={`message-${idx}`}>{message}</li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
 
                 {predictionHasErrors && (
-                  <div className="bg-red-50 dark:bg-red-900/40 rounded-lg p-4 border border-red-200 dark:border-red-800">
-                    <h4 className="font-bold mb-2 text-red-700 dark:text-red-200">Model Warnings</h4>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-red-700 dark:text-red-200">
-                      {prediction.errors.map((err, idx) => (
-                        <li key={`error-${idx}`}>{typeof err === 'string' ? err : JSON.stringify(err)}</li>
-                      ))}
-                    </ul>
+                  <div className="rounded-2xl border border-red-300 dark:border-red-800 bg-red-50/80 dark:bg-red-900/40 shadow-lg">
+                    <div className="p-6">
+                      <h4 className="text-lg font-semibold text-red-700 dark:text-red-200 mb-2">Model Warnings</h4>
+                      <ul className="list-disc list-inside space-y-1 text-base text-red-700 dark:text-red-200">
+                        {prediction.errors.map((err, idx) => (
+                          <li key={`error-${idx}`}>{typeof err === 'string' ? err : JSON.stringify(err)}</li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
 
                 {prediction?.predictionDetails && (
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                    <h4 className="font-bold mb-2">Technical Metadata</h4>
-                    <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto text-gray-700 dark:text-gray-200">
-{JSON.stringify(prediction.predictionDetails, null, 2)}
-                    </pre>
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/80 shadow-lg">
+                    <div className="space-y-2 p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Technical Metadata</h4>
+                      <pre className="max-h-80 overflow-y-auto rounded-xl bg-gray-100 dark:bg-gray-800 p-4 text-xs text-gray-700 dark:text-gray-200">
+                        {JSON.stringify(prediction.predictionDetails, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 )}
               </div>
             )}
-
-            <div className="flex gap-4 flex-nowrap pt-2">
-              <button
-                type="button"
-                onClick={handleSaveDisposal}
-                className="btn-secondary flex-1 min-w-0"
-                disabled={loading}
-              >
-                Save Disposal
-              </button>
-              <button
-                type="button"
-                onClick={handleRequestPickup}
-                className={`btn-primary flex-1 min-w-0 ${!prediction ? 'opacity-50 cursor-not-allowed' : ''}`}
-                disabled={!prediction || loading}
-                title={!prediction ? 'Analyze to enable pickup request' : 'Request CHW pickup'}
-              >
-                Request CHW Pickup
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

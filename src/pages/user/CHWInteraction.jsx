@@ -15,7 +15,6 @@ export default function CHWInteraction() {
   const [query, setQuery] = useState('');
   const [chws, setChws] = useState([]);
   const [pickups, setPickups] = useState([]);
-  const [disposals, setDisposals] = useState([]);
   // Two loading flags: initialLoading controls the first full-screen loader,
   // refreshing indicates background refreshes (polling) so we avoid a full-page reload feel.
   const [initialLoading, setInitialLoading] = useState(true);
@@ -23,6 +22,15 @@ export default function CHWInteraction() {
   const [error, setError] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [selectedCHW, setSelectedCHW] = useState(null);
+  const [formData, setFormData] = useState({
+    medicineName: prefillData.medicineName || '',
+    disposalGuidance: prefillData.disposalGuidance || '',
+    reason: '',
+    pickupLocation: '',
+    preferredTime: '',
+    consent: false,
+  });
 
   const pickupStatusBadgeMap = {
     completed: 'badge-success',
@@ -33,13 +41,6 @@ export default function CHWInteraction() {
     cancelled: 'badge-danger',
     rejected: 'badge-danger',
     not_requested: 'badge-secondary'
-  };
-
-  const disposalStatusBadgeMap = {
-    completed: 'badge-success',
-    pickup_requested: 'badge-info',
-    pending_review: 'badge-warning',
-    cancelled: 'badge-danger'
   };
 
   const createStatusBadge = (status, mapping) => {
@@ -86,10 +87,6 @@ export default function CHWInteraction() {
     const effectiveSearch = typeof searchTerm === 'string' ? searchTerm.trim() : query.trim();
     const chwParams = { limit: 50 };
 
-    if (user.sector) {
-      chwParams.sector = user.sector;
-    }
-
     if (effectiveSearch) {
       chwParams.search = effectiveSearch;
     }
@@ -101,10 +98,9 @@ export default function CHWInteraction() {
         setInitialLoading(true);
       }
 
-      const [chwsResult, pickupsResult, disposalsResult] = await Promise.all([
+      const [chwsResult, pickupsResult] = await Promise.all([
         chwAPI.getAll(chwParams),
-        pickupsAPI.getAll(),
-        background ? Promise.resolve(null) : disposalsAPI.getAll()
+        pickupsAPI.getAll()
       ]);
 
       if (chwsResult?.success) {
@@ -156,10 +152,6 @@ export default function CHWInteraction() {
         }
       }
 
-      if (!background && disposalsResult?.success) {
-        setDisposals(disposalsResult.data || []);
-      }
-
       if (!background) {
         setError('');
       }
@@ -175,41 +167,85 @@ export default function CHWInteraction() {
     }
   };
 
-  // Backend filters by sector & search, but keep client-side search as a fallback.
-  const filteredCHWs = useMemo(() => {
-    if (!query) return chws;
-    const q = query.toLowerCase();
-    return chws.filter(
-      (c) =>
-        (c.name || '').toLowerCase().includes(q) ||
-        (c.sector || '').toLowerCase().includes(q) ||
-        (c.coverageArea || '').toLowerCase().includes(q) ||
-        (c.phone || '').toLowerCase().includes(q)
-    );
-  }, [query, chws]);
+  const normalizedUserSector = (user.sector || '').trim().toLowerCase();
+  const normalizedPickupLocation = formData.pickupLocation.trim().toLowerCase();
 
-  const pickupLookup = useMemo(() => {
-    const map = new Map();
-    pickups.forEach((pickup) => {
-      if (pickup?.id) {
-        map.set(pickup.id, pickup);
-      }
-      if (pickup?.disposalId) {
-        map.set(`disposal:${pickup.disposalId}`, pickup);
-      }
+  // Filter and prioritize CHWs so sector/location matches float to the top.
+  const prioritizedCHWs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    const hasLooseMatch = (a, b) => {
+      const left = (a || '').trim();
+      const right = (b || '').trim();
+      if (!left || !right) return false;
+      return left.includes(right) || right.includes(left);
+    };
+
+    const filtered = q
+      ? chws.filter((c) => {
+          const name = (c.name || '').toLowerCase();
+          const sector = (c.sector || '').toLowerCase();
+          const coverage = (c.coverageArea || '').toLowerCase();
+          const phone = (c.phone || '').toLowerCase();
+          return (
+            name.includes(q) ||
+            sector.includes(q) ||
+            coverage.includes(q) ||
+            phone.includes(q)
+          );
+        })
+      : [...chws];
+
+    const scored = filtered.map((chw) => {
+      const sector = (chw.sector || '').trim().toLowerCase();
+      const coverage = (chw.coverageArea || '').trim().toLowerCase();
+
+      const locationMatch = normalizedPickupLocation
+        ? hasLooseMatch(coverage, normalizedPickupLocation) ||
+          hasLooseMatch(sector, normalizedPickupLocation)
+        : false;
+
+      const sectorMatch = normalizedUserSector
+        ? sector === normalizedUserSector ||
+          hasLooseMatch(coverage, normalizedUserSector) ||
+          hasLooseMatch(sector, normalizedUserSector)
+        : false;
+
+      const availabilityValue = (chw.availability || '').toLowerCase();
+      const availabilityScore =
+        availabilityValue === 'available' ? 2 : availabilityValue === 'busy' ? 1 : 0;
+
+      const ratingValue =
+        typeof chw.rating === 'number'
+          ? chw.rating
+          : Number.parseFloat(chw.rating) || 0;
+
+      const priorityScore =
+        (locationMatch ? 6 : 0) +
+        (sectorMatch ? 3 : 0) +
+        availabilityScore +
+        ratingValue / 10;
+
+      return {
+        chw,
+        priorityScore,
+        ratingValue,
+      };
     });
-    return map;
-  }, [pickups]);
 
-  const [selectedCHW, setSelectedCHW] = useState(null);
-  const [formData, setFormData] = useState({
-    medicineName: prefillData.medicineName || '',
-    disposalGuidance: prefillData.disposalGuidance || '',
-    reason: '',
-    pickupLocation: '',
-    preferredTime: '',
-    consent: false,
-  });
+    scored.sort((a, b) => {
+      if (b.priorityScore !== a.priorityScore) {
+        return b.priorityScore - a.priorityScore;
+      }
+      if (b.ratingValue !== a.ratingValue) {
+        return b.ratingValue - a.ratingValue;
+      }
+      return (a.chw.name || '').localeCompare(b.chw.name || '');
+    });
+
+    return scored.map((entry) => entry.chw);
+  }, [chws, query, normalizedPickupLocation, normalizedUserSector]);
+
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -225,10 +261,13 @@ export default function CHWInteraction() {
     setSelectedCHW(chw);
   };
 
-  const handleSearch = (searchValue) => {
+  const handleSearch = (searchValue, meta = {}) => {
     const value = typeof searchValue === 'string' ? searchValue : '';
     setQuery(value);
-    fetchData({ background: false, searchTerm: value });
+
+    if (meta.submit || meta.clear) {
+      fetchData({ background: false, searchTerm: value });
+    }
   };
 
   const handleInputChange = (e) => {
@@ -329,64 +368,14 @@ export default function CHWInteraction() {
 
   // Format pickups data for table display
   const formattedPickups = useMemo(() => {
-    return pickups.map(pickup => ({
+    return pickups.map((pickup) => ({
       ...pickup,
       chwName: pickup.chw?.name || 'Not assigned',
-      createdAt: new Date(pickup.createdAt).toLocaleDateString()
+      createdAt: pickup.createdAt
+        ? new Date(pickup.createdAt).toLocaleDateString()
+        : '—'
     }));
   }, [pickups]);
-
-  const formattedDisposals = useMemo(() => {
-    return disposals.map((disposal) => {
-      const linkedPickup =
-        disposal.pickupRequest ||
-        pickupLookup.get(disposal.pickupRequestId) ||
-        pickupLookup.get(`disposal:${disposal.id}`);
-
-      const pickupStatus = linkedPickup?.status || (disposal.pickupRequestId ? 'pickup_requested' : 'not_requested');
-
-      return {
-        ...disposal,
-        medicineLabel: disposal.genericName || disposal.medicineName || '—',
-        statusLabel: disposal.status || 'pending_review',
-        inputType: (disposal.predictionInputType || 'manual').toUpperCase(),
-        pickupStatus,
-        createdAt: disposal.createdAt
-          ? new Date(disposal.createdAt).toLocaleDateString()
-          : '—'
-      };
-    });
-  }, [disposals, pickupLookup]);
-
-  const disposalColumns = [
-    {
-      key: 'medicineLabel',
-      label: 'Medicine',
-      sortable: true
-    },
-    {
-      key: 'statusLabel',
-      label: 'Disposal Status',
-      sortable: true,
-      render: (value) => createStatusBadge(value, disposalStatusBadgeMap)
-    },
-    {
-      key: 'inputType',
-      label: 'Input',
-      sortable: true
-    },
-    {
-      key: 'pickupStatus',
-      label: 'Pickup',
-      sortable: true,
-      render: (value) => createStatusBadge(value, pickupStatusBadgeMap)
-    },
-    {
-      key: 'createdAt',
-      label: 'Created',
-      sortable: true
-    }
-  ];
 
   const pickupColumns = [
     {
@@ -456,18 +445,18 @@ export default function CHWInteraction() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="card">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
+        <div className="card h-full flex flex-col">
           <h2 className="text-xl font-bold mb-2">Community Health Workers in Your Sector</h2>
           {user.sector && (
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Showing CHWs from <span className="font-semibold text-primary-blue dark:text-accent-cta">{user.sector}</span> sector
+              CHWs who serve <span className="font-semibold text-primary-blue dark:text-accent-cta">{user.sector}</span> appear first. Update the pickup location below to surface nearby matches.
             </p>
           )}
           {!user.sector && (
             <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
               <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                Please update your sector in your profile to see CHWs in your area.
+                Add your sector in your profile so we can prioritize CHWs in your area.
               </p>
             </div>
           )}
@@ -475,19 +464,28 @@ export default function CHWInteraction() {
             <SearchBar
               onSearch={handleSearch}
               placeholder="Search CHWs by name, sector or coverage area..."
+              live
             />
           </div>
-          <div className="space-y-3">
-            {filteredCHWs.length === 0 ? (
+          <div className="text-sm text-gray-600 dark:text-gray-400 mb-3" role="status">
+            {formData.pickupLocation
+              ? `Prioritizing CHWs near "${formData.pickupLocation}"`
+              : user.sector
+              ? `Prioritizing CHWs serving ${user.sector}`
+              : 'Showing all Community Health Workers'}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <div className="space-y-3 max-h-[32rem] lg:max-h-[38rem] overflow-y-auto pr-1">
+            {prioritizedCHWs.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-600 dark:text-gray-400">
-                  {user.sector
-                    ? `No CHWs available in ${user.sector} sector at the moment.`
-                    : 'Please set your sector in your profile to see available CHWs.'}
+                  {query
+                    ? `No CHWs match “${query}”. Try a different name or area.`
+                    : 'No community health workers are available right now.'}
                 </p>
               </div>
             ) : (
-              filteredCHWs.map((chw) => {
+              prioritizedCHWs.map((chw) => {
                 const chwId = chw.id || chw.userId;
                 const availabilityValue = (chw.availability || 'offline').toLowerCase();
                 const availabilityClass =
@@ -552,10 +550,11 @@ export default function CHWInteraction() {
                 );
               })
             )}
+            </div>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="card">
+        <form onSubmit={handleSubmit} className="card h-full flex flex-col">
           <h2 className="text-xl font-bold mb-4">Pickup Request Form</h2>
 
           {selectedCHW ? (
@@ -652,11 +651,6 @@ export default function CHWInteraction() {
       <div className="card">
         <h2 className="text-xl font-bold mb-4">My Pickup Requests</h2>
         <Table columns={pickupColumns} data={formattedPickups} />
-      </div>
-
-      <div className="card mt-6">
-        <h2 className="text-xl font-bold mb-4">My Disposals</h2>
-        <Table columns={disposalColumns} data={formattedDisposals} />
       </div>
     </div>
   );

@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 
-export default function SearchBar({ onSearch, placeholder = 'Search medicines, guides...' }) {
+export default function SearchBar({ onSearch, placeholder = 'Search medicines, guides...', live = false }) {
   const [query, setQuery] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
     if (onSearch) {
-      onSearch(query.trim());
+      onSearch(query.trim(), { submit: true });
     }
   };
 
@@ -16,8 +16,14 @@ export default function SearchBar({ onSearch, placeholder = 'Search medicines, g
     const value = e.target.value;
     setQuery(value);
 
-    if (onSearch && value.trim().length === 0) {
-      onSearch('');
+    if (!onSearch) return;
+
+    if (live) {
+      onSearch(value, { live: true });
+    }
+
+    if (value.trim().length === 0) {
+      onSearch('', { clear: true });
     }
   };
 
