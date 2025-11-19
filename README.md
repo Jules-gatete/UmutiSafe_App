@@ -7,7 +7,7 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
  
  **Backend API:** [https://github.com/umutisafe/api-backend](https://umutisafe-backend.onrender.com)
  
- **AI Model Repository:** [https://github.com/umutisafe/ai-models](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git)
+ **AI Model Repository and :** [https://github.com/umutisafe/ai-models](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git)
 
 ##  **Video demo**
 
