@@ -5,9 +5,8 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
 
  **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umuti-safe-app.vercel.app/login)
  
- **Backend API:** [https://github.com/umutisafe/api-backend](https://umutisafe-backend.onrender.com)
- 
- **AI Model Repository and :** [https://github.com/umutisafe/ai-models](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git)
+ **Backend Deployed API:**[https://umutisafe-backend.onrender.com](https://umutisafe-backend.onrender.com) / **Backend Repo:** [https://github.com/Jules-gatete/UmutiSafe_Backend](https://github.com/Jules-gatete/UmutiSafe_Backend)
+ **AI Model Repository/Deployed API Link:** [https://github.com/Jules-gatete/FastAPI.git](https://github.com/Jules-gatete/FastAPI.git) / [https://plankton-app-2c2ae.ondigitalocean.app/docs](https://plankton-app-2c2ae.ondigitalocean.app/docs)
 
 ##  **Video demo**
 
@@ -53,7 +52,7 @@ It combines **machine learning classification**, **OCR analysis**, and **interac
 
 ---
 
-##  **Quick Start**
+##  **Local run Quick Start**
 
 ```bash
 # 1. Install dependencies
@@ -96,7 +95,7 @@ src/
 | Admin stats         | `GET /api/admin/stats`                               |
 | Reports export      | `POST /api/admin/reports/export`                     |
 
- **AI Models:** Integrated with the [UmutiSafe AI Models API](https://github.com/Jules-gatete/UmutiSafe_FastAPI-Model.git) for OCR extraction and disposal category prediction.
+ **AI Models:** Integrated with the [UmutiSafe AI Models API](https://plankton-app-2c2ae.ondigitalocean.app/docs) for OCR extraction and disposal category prediction.
 
 ---
 
