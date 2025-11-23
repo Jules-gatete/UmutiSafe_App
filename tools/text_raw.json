@@ -1,28 +1,67 @@
 {
   "success": true,
-  "medicine_info": {
-    "generic_name": "Paracetamol",
-    "brand_name": "Panadol",
-    "dosage_form": "Tablet"
-  },
+  "medicine_name": "Ibuprofen",
+  "input_type": "text",
   "predictions": {
-    "disposal_category": "1",
-    "risk_level": "LOW",
-    "confidence": 0.764,
-    "all_probabilities": {
-      "1": 0.764,
-      "2": 0.115,
-      "3": 0.096,
-      "4": 0.025
-    }
+    "dosage_form": [
+      {
+        "value": "suspension",
+        "confidence": 0.9942637085914612
+      },
+      {
+        "value": "ophthalmic suspension",
+        "confidence": 0.0015899912687018514
+      },
+      {
+        "value": "syrup",
+        "confidence": 0.001369767589494586
+      }
+    ],
+    "manufacturer": [
+      {
+        "value": "rene industries ltd",
+        "confidence": 0.33519959449768066
+      },
+      {
+        "value": "cosmos limited",
+        "confidence": 0.33439674973487854
+      },
+      {
+        "value": "s kant healthcare ltd",
+        "confidence": 0.21235820651054382
+      }
+    ],
+    "disposal_category": {
+      "code": "5",
+      "value": "PVC Plastic, Glass",
+      "raw_value": "5",
+      "confidence": 0.6444317698478699,
+      "handling_method": "Clean to remove any residual drug contamination. Segregate from hazardous waste and place in designated containers for non-hazardous waste disposal or recycling.",
+      "recommended_disposal": "Landfill",
+      "remarks": "Not for burning in open containers."
+    },
+    "method_of_disposal": [
+      {
+        "value": "high-temperature incineration (cement kiln incinerator)",
+        "confidence": 0.6255283355712891
+      },
+      {
+        "value": "sewer",
+        "confidence": 0.6255283355712891
+      }
+    ],
+    "handling_method": "Liquid vitamins, readily biodegradable organic material, may be diluted and flushed into sewer. Harmless solutions of salts, amino acids, lipids, or glucose may also be disposed of in sewers. If no sewers or functioning sewage treatment plant, dilute with large volumes of water and pour into large watercourses for immediate dispersion and dilution. Liquid pharmaceuticals, diluted or not, should not be discharged into slow-moving or stagnant surface waters.",
+    "disposal_remarks": "Antineoplastics not to be sent to sewer.",
+    "similar_generic_name": "ibuprofen",
+    "similarity_distance": 0,
+    "input_generic_name": "Ibuprofen"
   },
-  "safety_guidance": {
-    "category_name": "1",
-    "risk_level": "LOW",
-    "prohibitions": "Follow general medicine disposal guidelines. Consult healthcare provider for specific instructions.",
-    "risks": "Unknown risks. Professional guidance recommended for safe disposal.",
-    "procedure": "Contact local pharmacy or healthcare facility for disposal instructions.",
-    "special_instructions": "Always prioritize safety and environmental protection."
-  },
-  "timestamp": "2025-10-19T16:40:06.952036"
+  "analysis": "# Medicine Analysis: Ibuprofen\nBased on the medicine **Ibuprofen**, here is a comprehensive analysis:\n## Dosage Form\nThe most likely dosage form is **Suspension** (confidence: 99.4%). Alternative forms include: Ophthalmic Suspension, Syrup.\n## Manufacturer\nThe most likely manufacturer is **Rene Industries Ltd** (confidence: 33.5%). Alternative manufacturers include: Cosmos Limited, S Kant Healthcare Ltd.\n## Disposal Category\nThis medicine falls under **Pvc Plastic, Glass** (confidence: 64.4%).\n## Recommended Disposal Methods\nThe following disposal methods are recommended:\n  1. High-Temperature Incineration (Cement Kiln Incinerator) (confidence: 62.6%)\n  2. Sewer (confidence: 62.6%)\n\n## Handling Instructions\nLiquid vitamins, readily biodegradable organic material, may be diluted and flushed into sewer. Harmless solutions of salts, amino acids, lipids, or glucose may also be disposed of in sewers. If no sewers or functioning sewage treatment plant, dilute with large volumes of water and pour into large watercourses for immediate dispersion and dilution. Liquid pharmaceuticals, diluted or not, should not be discharged into slow-moving or stagnant surface waters.\n\n## Important Disposal Remarks\nAntineoplastics not to be sent to sewer.\n\n## Summary\nFor the medicine **Ibuprofen**, it is typically available as Suspension, manufactured by Rene Industries Ltd. It should be disposed of as Pvc Plastic, Glass. The primary disposal method is High-Temperature Incineration (Cement Kiln Incinerator).\n",
+  "messages": [
+    "Using text input: Ibuprofen",
+    "Validated medicine name: Ibuprofen",
+    "Predictions generated successfully",
+    "Analysis generated successfully"
+  ],
+  "errors": []
 }

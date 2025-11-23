@@ -1,12 +1,20 @@
 {
   "success": true,
   "ocr_text": {
-    "medicine_name": "Paracetamol",
-    "brand_name": "Panadol"
+    "medicine_name": "",
+    "brand_name": ""
   },
-  "predicted_category": "1",
-  "risk_level": "LOW",
-  "confidence": 0.764,
-  "disposal_guidance": "Contact local pharmacy or healthcare facility for disposal instructions.",
-  "safety_notes": "Always prioritize safety and environmental protection."
+  "predicted_category": {
+    "code": "5",
+    "value": "PVC Plastic, Glass",
+    "raw_value": "5",
+    "confidence": 0.6444317698478699,
+    "handling_method": "Clean to remove any residual drug contamination. Segregate from hazardous waste and place in designated containers for non-hazardous waste disposal or recycling.",
+    "recommended_disposal": "Landfill",
+    "remarks": "Not for burning in open containers."
+  },
+  "risk_level": "",
+  "confidence": 0,
+  "disposal_guidance": "",
+  "safety_notes": ""
 }

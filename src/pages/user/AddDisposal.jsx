@@ -34,6 +34,26 @@ export default function AddDisposal() {
     return `${Math.round(clamped * 100)}%`;
   };
 
+  const extractConfidence = (entry) => {
+    if (!entry || typeof entry !== 'object') return null;
+    const candidateKeys = ['confidence', 'confidence_score', 'score', 'probability'];
+
+    for (const key of candidateKeys) {
+      const raw = entry[key];
+      if (typeof raw === 'number' && !Number.isNaN(raw)) {
+        return clampConfidence(raw);
+      }
+      if (typeof raw === 'string') {
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isNaN(parsed)) {
+          return clampConfidence(parsed);
+        }
+      }
+    }
+
+    return null;
+  };
+
   const renderConfidenceList = (items, emptyFallback) => {
     if (!Array.isArray(items) || items.length === 0) {
       return emptyFallback ? <p className="text-gray-600 dark:text-gray-400">{emptyFallback}</p> : null;
@@ -46,7 +66,7 @@ export default function AddDisposal() {
             if (!item) return null;
             const label = item.label || item.value;
             if (!label) return null;
-            const confidence = typeof item.confidence === 'number' ? clampConfidence(item.confidence) : null;
+            const confidence = extractConfidence(item);
             return {
               label,
               confidence,
@@ -54,6 +74,12 @@ export default function AddDisposal() {
             };
           })
           .filter(Boolean)
+          .sort((a, b) => {
+            const aConf = typeof a.confidence === 'number' ? a.confidence : -1;
+            const bConf = typeof b.confidence === 'number' ? b.confidence : -1;
+            if (bConf !== aConf) return bConf - aConf;
+            return a.label.localeCompare(b.label);
+          })
           .map((entry) => (
             <li key={entry.key} className="flex items-center justify-between gap-2">
               <span className="font-medium text-base md:text-lg break-words">{entry.label}</span>
@@ -132,30 +158,36 @@ export default function AddDisposal() {
       .join(' ');
   };
 
-  const pickTopPrediction = (items) => {
-    if (!Array.isArray(items) || items.length === 0) return null;
-    let best = null;
+  const sortPredictionsByConfidence = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return [];
 
-    for (const item of items) {
-      if (!item) continue;
-      const value = item.value || item.label;
-      if (!value) continue;
-      const confidence = typeof item.confidence === 'number' ? clampConfidence(item.confidence) : null;
+    return items
+      .map((item, index) => {
+        if (!item) return null;
+        const rawValue = item.value ?? item.label;
+        if (rawValue === undefined || rawValue === null) return null;
+        const normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
+        if (!normalizedValue) return null;
+        const confidence = extractConfidence(item);
+        const label = item.label ?? normalizedValue;
 
-      if (!best) {
-        best = { value, confidence };
-        continue;
-      }
-
-      const bestConfidence = typeof best.confidence === 'number' ? best.confidence : -1;
-      const candidateConfidence = typeof confidence === 'number' ? confidence : -1;
-
-      if (candidateConfidence > bestConfidence) {
-        best = { value, confidence };
-      }
-    }
-
-    return best;
+        return {
+          ...item,
+          value: normalizedValue,
+          label,
+          confidence,
+          id: item.id ?? `${normalizedValue}-${index}`
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aConf = typeof a.confidence === 'number' ? a.confidence : -1;
+        const bConf = typeof b.confidence === 'number' ? b.confidence : -1;
+        if (bConf !== aConf) return bConf - aConf;
+        const aLabel = (a.label ?? a.value ?? '').toString().toLowerCase();
+        const bLabel = (b.label ?? b.value ?? '').toString().toLowerCase();
+        return aLabel.localeCompare(bLabel);
+      });
   };
 
   const buildOcrSummaryItems = (rawOcr) => {
@@ -271,6 +303,44 @@ export default function AddDisposal() {
     return value.toString().trim() || null;
   };
 
+  const extractAnalysisSection = (analysisText, headingLabel) => {
+    if (!analysisText || !headingLabel) return '';
+    const targetHeading = `## ${headingLabel.trim()}`.toLowerCase();
+    const lines = analysisText.split('\n');
+    let capture = false;
+    const captured = [];
+
+    for (const rawLine of lines) {
+      const normalized = rawLine.trim();
+      const lower = normalized.toLowerCase();
+
+      if (!capture && lower === targetHeading) {
+        capture = true;
+        continue;
+      }
+
+      if (capture && lower.startsWith('## ') && lower !== targetHeading) {
+        break;
+      }
+
+      if (capture && normalized) {
+        captured.push(normalized);
+      }
+    }
+
+    return captured.length ? captured.join(' ') : '';
+  };
+
+  const isGenericHandlingFallback = (text) => {
+    if (!text) return false;
+    return /liquid vitamins|readily biodegradable|harmless solutions of salts/i.test(text);
+  };
+
+  const isGenericDisposalRemark = (text) => {
+    if (!text) return false;
+    return /antineoplastics not to be sent to sewer/i.test(text);
+  };
+
   const formatCategoryLabel = (value) => {
     if (!value) return 'Not classified yet';
     const stringValue = value.toString().trim();
@@ -316,20 +386,49 @@ export default function AddDisposal() {
       ? { value: modelPredictions.disposal_category }
       : null;
 
-  const disposalCategoryValue = normalizedCategory?.value ?? null;
-  const disposalMethods = Array.isArray(modelPredictions.method_of_disposal)
-    ? modelPredictions.method_of_disposal
-    : [];
-  const dosageFormPredictions = Array.isArray(modelPredictions.dosage_form)
-    ? modelPredictions.dosage_form
-    : [];
-  const manufacturerPredictions = Array.isArray(modelPredictions.manufacturer)
-    ? modelPredictions.manufacturer
-    : [];
-  const handlingMethod = typeof modelPredictions.handling_method === 'string'
-    ? modelPredictions.handling_method.trim()
+  const categoryHandlingInstruction = typeof normalizedCategory?.handling_method === 'string'
+    ? normalizedCategory.handling_method.trim()
     : '';
-  const disposalRemarks = modelPredictions.disposal_remarks || '';
+  const categoryRemarks = (() => {
+    if (!normalizedCategory) return '';
+    const candidate =
+      normalizedCategory.remarks ??
+      normalizedCategory.disposal_remarks ??
+      normalizedCategory.remark ??
+      null;
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  })();
+  const categoryRecommendedDisposal = typeof normalizedCategory?.recommended_disposal === 'string'
+    ? normalizedCategory.recommended_disposal.trim()
+    : '';
+
+  const disposalCategoryValue = normalizedCategory?.value ?? null;
+  const disposalMethods = sortPredictionsByConfidence(modelPredictions.method_of_disposal);
+  const dosageFormPredictions = sortPredictionsByConfidence(modelPredictions.dosage_form);
+  const manufacturerPredictions = sortPredictionsByConfidence(modelPredictions.manufacturer);
+  const analysisHandlingMethod = extractAnalysisSection(prediction?.analysis, 'Handling Instructions');
+  const handlingMethod = (() => {
+    if (typeof modelPredictions.handling_method === 'string') {
+      const trimmed = modelPredictions.handling_method.trim();
+      if (trimmed) return trimmed;
+    }
+    if (analysisHandlingMethod) {
+      return analysisHandlingMethod;
+    }
+    if (categoryHandlingInstruction && !isGenericHandlingFallback(categoryHandlingInstruction)) {
+      return categoryHandlingInstruction;
+    }
+    return '';
+  })();
+  const summaryHandleWithCare = categoryHandlingInstruction || handlingMethod || '';
+  const disposalRemarks = (() => {
+    if (typeof modelPredictions.disposal_remarks === 'string') {
+      const trimmed = modelPredictions.disposal_remarks.trim();
+      if (trimmed) return trimmed;
+    }
+    return categoryRemarks;
+  })();
+  const sanitizedDisposalRemarks = isGenericDisposalRemark(disposalRemarks) ? '' : disposalRemarks;
   const similarGenericName = modelPredictions.similar_generic_name || '';
   const similarityDistance =
     typeof modelPredictions.similarity_distance === 'number'
@@ -341,17 +440,22 @@ export default function AddDisposal() {
     typeof normalizedCategory?.confidence === 'number'
       ? clampConfidence(normalizedCategory.confidence)
       : null;
-  const topDisposalMethodPrediction = pickTopPrediction(disposalMethods);
-  const primaryDisposalMethod = topDisposalMethodPrediction?.value
-    ? topDisposalMethodPrediction.value.trim()
-    : null;
+  const topDisposalMethodPrediction = disposalMethods[0] || null;
+  const primaryDisposalMethod = (() => {
+    const best = topDisposalMethodPrediction?.value
+      ? topDisposalMethodPrediction.value.toString().trim()
+      : '';
+    if (best) return best;
+    if (categoryRecommendedDisposal) return categoryRecommendedDisposal;
+    return null;
+  })();
   const methodConfidence = typeof topDisposalMethodPrediction?.confidence === 'number'
     ? topDisposalMethodPrediction.confidence
     : null;
   const confidenceValue = categoryConfidence ?? methodConfidence ?? 0;
 
   const predictionHasErrors = Array.isArray(prediction?.errors) && prediction.errors.length > 0;
-  const primaryGuidance = primaryDisposalMethod || handlingMethod || '';
+  const primaryGuidance = primaryDisposalMethod || summaryHandleWithCare || '';
   const riskLevelValue = prediction ? modelPredictions?.risk_level || prediction.riskLevel : null;
   const friendlyRiskLabel = formatRiskLevel(riskLevelValue);
   const riskBadgeClass = getRiskBadgeClass(riskLevelValue);
@@ -371,14 +475,11 @@ export default function AddDisposal() {
     : 'TEXT';
   const isImagePrediction = normalizedInputType.includes('image');
 
-  const topDosageFormPrediction = pickTopPrediction(dosageFormPredictions);
+  const topDosageFormPrediction = dosageFormPredictions[0] || null;
   const primaryDosageForm = topDosageFormPrediction?.value || null;
-  const topManufacturerPrediction = pickTopPrediction(manufacturerPredictions);
+  const topManufacturerPrediction = manufacturerPredictions[0] || null;
   const primaryManufacturerRaw = topManufacturerPrediction?.value || null;
-  const primaryManufacturer =
-    primaryManufacturerRaw && !/^(other|unknown)$/i.test(primaryManufacturerRaw.trim())
-      ? primaryManufacturerRaw
-      : null;
+  const primaryManufacturer = primaryManufacturerRaw ? primaryManufacturerRaw.trim() : null;
   const normalizedConfidenceValue = clampConfidence(confidenceValue);
   const confidencePercent =
     typeof normalizedConfidenceValue === 'number'
@@ -408,8 +509,18 @@ export default function AddDisposal() {
       : null,
     {
       label: 'Primary Disposal Method',
-      value: primaryGuidance || 'Not available yet'
+      value: primaryDisposalMethod || categoryRecommendedDisposal || 'Not available yet',
+      helper:
+        categoryRecommendedDisposal && primaryDisposalMethod && primaryDisposalMethod !== categoryRecommendedDisposal
+          ? `Category recommendation: ${categoryRecommendedDisposal}`
+          : null
     },
+    summaryHandleWithCare
+      ? {
+          label: 'Handle With Care',
+          value: summaryHandleWithCare
+        }
+      : null,
     friendlyRiskLabel !== 'UNKNOWN'
       ? {
           label: 'Risk Level',
@@ -428,7 +539,13 @@ export default function AddDisposal() {
     {
       label: 'Similar Match',
       value: similarGenericName || 'None suggested'
-    }
+    },
+    sanitizedDisposalRemarks
+      ? {
+          label: 'Remember',
+          value: sanitizedDisposalRemarks
+        }
+      : null
   ].filter(Boolean);
 
   const buildSummarySections = () => {
@@ -449,46 +566,26 @@ export default function AddDisposal() {
       }
     };
 
-    if (identifiedMedicine) {
-      const fragments = [];
-      let overview = `The model identified ${identifiedMedicine}`;
-      if (primaryDosageForm) {
-        overview += ` as ${primaryDosageForm}`;
-      }
-      if (primaryManufacturer) {
-        overview += ` from ${primaryManufacturer}`;
-      }
-      fragments.push(overview);
-      pushSection('What We Found', fragments);
-    }
-
     if (friendlyCategoryLabel && friendlyCategoryLabel !== 'Not classified yet') {
-      const fragments = [`Classified under ${friendlyCategoryLabel}.`];
-      if (friendlyRiskLabel && friendlyRiskLabel !== 'UNKNOWN') {
-        fragments.push(`Risk level: ${friendlyRiskLabel}.`);
+      const fragments = [`Disposal category: ${friendlyCategoryLabel}.`];
+      if (categoryConfidence) {
+        fragments.push(`Category confidence: ${formatPercent(categoryConfidence)}.`);
       }
-      if (confidenceText !== '—') {
-        fragments.push(`Model confidence: ${confidenceText}.`);
-      }
-      pushSection('Why It Matters', fragments);
+      pushSection('Disposal Category', fragments);
     }
 
-    if (primaryDisposalMethod || primaryGuidance) {
-      const fragments = [];
-      if (primaryDisposalMethod) {
-        fragments.push(`Dispose of it using ${primaryDisposalMethod}.`);
-      } else if (primaryGuidance) {
-        fragments.push(primaryGuidance);
-      }
-      pushSection('How To Dispose', fragments);
+    if (primaryDisposalMethod) {
+      pushSection('How To Dispose', [`Dispose of it using ${primaryDisposalMethod}.`]);
+    } else if (categoryRecommendedDisposal) {
+      pushSection('How To Dispose', [`Recommended disposal: ${categoryRecommendedDisposal}.`]);
     }
 
-    if (handlingMethod && handlingMethod !== primaryDisposalMethod) {
-      pushSection('Handle With Care', [`Before disposal: ${handlingMethod}`]);
+    if (summaryHandleWithCare) {
+      pushSection('Handle With Care', [summaryHandleWithCare]);
     }
 
-    if (disposalRemarks) {
-      pushSection('Remember', [disposalRemarks]);
+    if (sanitizedDisposalRemarks) {
+      pushSection('Remember', [sanitizedDisposalRemarks]);
     }
 
     return sections;
@@ -507,7 +604,7 @@ export default function AddDisposal() {
     return 'Ready to act? Save this guidance for your records or request a CHW pickup if you want assistance.';
   })();
 
-  const summaryIntro = summarySections.find((section) => section.label === 'What We Found')?.body;
+  const summaryIntro = summarySections[0]?.body || null;
 
   const confidenceDisplay = confidenceText && confidenceText !== '—' ? confidenceText : 'Pending';
 
@@ -565,7 +662,7 @@ export default function AddDisposal() {
       prediction.medicineName || inputGenericName || formData.generic_name || null;
     const predictedBrandName = rawMeta?.medicine_info?.brand_name || null;
     const predictedDosageForm =
-      rawMeta?.medicine_info?.dosage_form || dosageFormPredictions[0]?.value || null;
+      dosageFormPredictions[0]?.value || rawMeta?.medicine_info?.dosage_form || null;
     const predictedPackagingType = rawMeta?.medicine_info?.packaging_type || null;
     const storageRiskLevel = normalizeRiskLevelForPayload(riskLevelValue);
 
@@ -1001,7 +1098,7 @@ export default function AddDisposal() {
                   <div className="space-y-2">
                     <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Guidance Ready</h2>
                     <p className="text-base text-gray-600 dark:text-gray-300">
-                      {summaryIntro || `Model identified ${identifiedMedicine} and prepared guidance for you.`}
+                      {summaryIntro || 'Review the recommended disposal guidance below.'}
                     </p>
                   </div>
                 </div>
@@ -1075,7 +1172,7 @@ export default function AddDisposal() {
                     </span>
                     <h3 className="text-2xl sm:text-3xl font-semibold leading-snug">{pickupDisplayName}</h3>
                     <p className="text-base sm:text-lg text-white/85 leading-relaxed">
-                      {summaryIntro || `Model identified ${identifiedMedicine} from your submission. Review the predicted disposal path below.`}
+                      {summaryIntro || 'Review the predicted disposal path below.'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide">
@@ -1191,6 +1288,18 @@ export default function AddDisposal() {
                         label: 'Category',
                         value: friendlyCategoryLabel
                       },
+                      categoryHandlingInstruction
+                        ? {
+                            label: 'Category Handling Guidance',
+                            value: categoryHandlingInstruction
+                          }
+                        : null,
+                      handlingMethod && (!categoryHandlingInstruction || handlingMethod !== categoryHandlingInstruction)
+                        ? {
+                            label: 'Model Handling Guidance',
+                            value: handlingMethod
+                          }
+                        : null,
                       friendlyRiskLabel !== 'UNKNOWN'
                         ? {
                             label: 'Risk Level',
