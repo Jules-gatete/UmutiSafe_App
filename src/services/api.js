@@ -104,23 +104,624 @@ async function probeModel(baseUrl) {
 }
 
 function mapModelPredictionResponse(raw = {}) {
+  const clampConfidence = (value) => {
+    if (value === undefined || value === null) return null;
+    let numeric = value;
+    if (typeof numeric === 'string') {
+      numeric = Number.parseFloat(numeric);
+    }
+    if (typeof numeric !== 'number' || Number.isNaN(numeric)) {
+      return null;
+    }
+    if (numeric > 1 && numeric <= 100) {
+      numeric = numeric / 100;
+    }
+    if (numeric < 0) return 0;
+    if (numeric > 1) return 1;
+    return numeric;
+  };
+
+  const toNumber = (...candidates) => {
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      let value = candidate;
+      if (typeof value === 'string') {
+        value = Number.parseFloat(value);
+      }
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        return value;
+      }
+    }
+    return null;
+  };
+
+  const pickText = (...candidates) => {
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (typeof candidate === 'string') {
+        const trimmed = candidate.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+        continue;
+      }
+      if (Array.isArray(candidate)) {
+        const joined = candidate
+          .map((item) => {
+            if (!item) return '';
+            if (typeof item === 'string') return item.trim();
+            if (typeof item === 'object') {
+              const textValue = item.text || item.value || item.label || item.name || item.title || '';
+              return typeof textValue === 'string' ? textValue.trim() : '';
+            }
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        if (joined) {
+          return joined;
+        }
+        continue;
+      }
+      if (typeof candidate === 'object') {
+        const textValue =
+          candidate.text ||
+          candidate.value ||
+          candidate.message ||
+          candidate.msg ||
+          candidate.description;
+        if (typeof textValue === 'string') {
+          const trimmed = textValue.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+      }
+    }
+    return '';
+  };
+
+  const normalizePredictionList = (input, options = {}) => {
+    const { defaultConfidence = null, splitText = false, fillConfidence = false } = options;
+    const results = [];
+    const seen = new Set();
+
+    const addEntry = (value, confidence, meta = {}) => {
+      if (value === undefined || value === null) return;
+      const stringValue = value.toString().trim();
+      if (!stringValue) return;
+      const normalizedConfidence = confidence !== undefined && confidence !== null
+        ? clampConfidence(confidence)
+        : null;
+      const label = typeof meta.label === 'string' && meta.label.trim()
+        ? meta.label.trim()
+        : stringValue;
+      const key = `${stringValue.toLowerCase()}|${normalizedConfidence ?? ''}`;
+      if (!meta.allowDuplicate && seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+
+      const entry = {
+        value: stringValue,
+        label
+      };
+
+      if (normalizedConfidence !== null) {
+        entry.confidence = normalizedConfidence;
+      } else if (fillConfidence && defaultConfidence !== null) {
+        entry.confidence = defaultConfidence;
+      }
+
+      const extras = { ...meta };
+      delete extras.label;
+      delete extras.allowDuplicate;
+      delete extras.confidence;
+      Object.entries(extras).forEach(([k, v]) => {
+        if (v !== undefined) {
+          entry[k] = v;
+        }
+      });
+
+      results.push(entry);
+    };
+
+    const fromObjectEntry = (obj) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        return false;
+      }
+      const value = obj.value ?? obj.label ?? obj.name ?? obj.title ?? obj.text;
+      if (!value && value !== 0) {
+        return false;
+      }
+      const confidence =
+        obj.confidence ??
+        obj.score ??
+        obj.probability ??
+        obj.weight ??
+        obj.confidence_score;
+      const meta = { ...obj };
+      delete meta.value;
+      delete meta.label;
+      delete meta.name;
+      delete meta.title;
+      delete meta.text;
+      delete meta.confidence;
+      delete meta.score;
+      delete meta.probability;
+      delete meta.weight;
+      delete meta.confidence_score;
+      addEntry(value, confidence, meta);
+      return true;
+    };
+
+    const handle = (value) => {
+      if (value === undefined || value === null) {
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach(handle);
+        return;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return;
+        if (splitText && /[\n;,]/.test(trimmed)) {
+          trimmed
+            .split(/[\n;,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .forEach((part) => addEntry(part, null, {}));
+          return;
+        }
+        addEntry(trimmed, null, {});
+        return;
+      }
+      if (typeof value === 'number') {
+        addEntry(value, null, {});
+        return;
+      }
+      if (typeof value === 'object') {
+        if (fromObjectEntry(value)) {
+          return;
+        }
+        const entries = Object.entries(value);
+        let handled = false;
+        for (const [key, val] of entries) {
+          if (val === undefined || val === null) continue;
+          if (typeof val === 'number' || typeof val === 'string') {
+            addEntry(key, val, {});
+            handled = true;
+            continue;
+          }
+          if (typeof val === 'object') {
+            const candidate = { ...val };
+            if (candidate.value === undefined) {
+              candidate.value = key;
+            }
+            if (candidate.label === undefined) {
+              candidate.label = key;
+            }
+            if (fromObjectEntry(candidate)) {
+              handled = true;
+            }
+          }
+        }
+        if (!handled) {
+          const textCandidate = value.text || value.description || value.summary;
+          if (typeof textCandidate === 'string' && textCandidate.trim()) {
+            addEntry(textCandidate.trim(), null, {});
+          }
+        }
+      }
+    };
+
+    handle(input);
+
+    return results;
+  };
+
+  const collectMessages = (...sources) => {
+    const items = [];
+    for (const source of sources) {
+      if (!source) continue;
+      if (Array.isArray(source)) {
+        source.forEach((item) => {
+          if (!item) return;
+          if (typeof item === 'string') {
+            const trimmed = item.trim();
+            if (trimmed) items.push(trimmed);
+            return;
+          }
+          if (typeof item === 'object') {
+            const text = item.message || item.msg || item.detail || item.text;
+            if (typeof text === 'string' && text.trim()) {
+              items.push(text.trim());
+              return;
+            }
+            items.push(JSON.stringify(item));
+          } else {
+            items.push(String(item));
+          }
+        });
+        continue;
+      }
+      if (typeof source === 'string') {
+        source
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .forEach((line) => items.push(line));
+        continue;
+      }
+      if (typeof source === 'object') {
+        if (Array.isArray(source.detail)) {
+          source.detail.forEach((item) => {
+            if (typeof item === 'string') {
+              const trimmed = item.trim();
+              if (trimmed) items.push(trimmed);
+              return;
+            }
+            if (item && typeof item === 'object') {
+              const text = item.message || item.msg || item.detail;
+              if (typeof text === 'string' && text.trim()) {
+                items.push(text.trim());
+              }
+            }
+          });
+          continue;
+        }
+        const text = source.message || source.msg || source.error || source.detail;
+        if (typeof text === 'string' && text.trim()) {
+          items.push(text.trim());
+        }
+      }
+    }
+    const unique = Array.from(new Set(items));
+    return unique;
+  };
+
+  const pickObject = (...candidates) => {
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+    return {};
+  };
+
+  const basePredictions = pickObject(
+    raw.predictions,
+    raw.data && raw.data.predictions,
+    raw.result && raw.result.predictions,
+    raw.details,
+    raw.prediction
+  );
+  const safety = pickObject(
+    raw.safety_guidance,
+    raw.guidance,
+    raw.safety
+  );
+  const metadata = pickObject(raw.metadata);
+
+  const baseConfidence = clampConfidence(
+    basePredictions.confidence ??
+      basePredictions.score ??
+      basePredictions.probability ??
+      raw.confidence
+  );
+
+  const riskLevel = pickText(
+    basePredictions.risk_level,
+    safety.risk_level,
+    metadata.risk_level,
+    raw.risk_level
+  );
+  const handlingMethod = pickText(
+    basePredictions.handling_method,
+    safety.prohibitions,
+    safety.procedure
+  );
+  const disposalRemarks = pickText(
+    basePredictions.disposal_remarks,
+    basePredictions.remark,
+    safety.special_instructions,
+    safety.risks,
+    metadata.disposal_remarks,
+    raw.disposal_remarks
+  );
+  const recommendedDisposal = pickText(
+    basePredictions.recommended_disposal,
+    safety.procedure
+  );
+  const probabilities =
+    basePredictions.all_probabilities ||
+    basePredictions.category_probabilities ||
+    metadata.all_probabilities ||
+    raw.all_probabilities ||
+    null;
+
+  const buildDisposalCategory = () => {
+    const source =
+      basePredictions.disposal_category ||
+      basePredictions.category ||
+      raw.predicted_category ||
+      safety.category ||
+      safety.category_name;
+    if (!source && !recommendedDisposal && !handlingMethod && !disposalRemarks && !riskLevel) {
+      return null;
+    }
+
+    const createCategory = (value, meta = {}) => {
+      if (value === undefined || value === null) return null;
+      const stringValue = value.toString().trim();
+      if (!stringValue) return null;
+      const category = { value: stringValue };
+      if (meta.label) category.label = meta.label;
+      if (meta.confidence != null) category.confidence = meta.confidence;
+      if (meta.risk_level) category.risk_level = meta.risk_level;
+      if (meta.recommended_disposal) category.recommended_disposal = meta.recommended_disposal;
+      if (meta.handling_method) category.handling_method = meta.handling_method;
+      if (meta.remarks) category.remarks = meta.remarks;
+      if (meta.all_probabilities) category.all_probabilities = meta.all_probabilities;
+      Object.entries(meta.extra || {}).forEach(([key, val]) => {
+        if (val !== undefined && !(key in category)) {
+          category[key] = val;
+        }
+      });
+      return category;
+    };
+
+    if (Array.isArray(source)) {
+      const normalized = normalizePredictionList(source, {
+        defaultConfidence: baseConfidence,
+        fillConfidence: true
+      });
+      if (normalized.length) {
+        const [primary, ...rest] = normalized;
+        const category = { ...primary };
+        if (rest.length) {
+          category.options = [primary, ...rest];
+        }
+        if (!category.risk_level && riskLevel) {
+          category.risk_level = riskLevel;
+        }
+        if (!category.recommended_disposal && recommendedDisposal) {
+          category.recommended_disposal = recommendedDisposal;
+        }
+        if (!category.handling_method && handlingMethod) {
+          category.handling_method = handlingMethod;
+        }
+        if (!category.remarks && disposalRemarks) {
+          category.remarks = disposalRemarks;
+        }
+        if (probabilities && !category.all_probabilities) {
+          category.all_probabilities = probabilities;
+        }
+        return category;
+      }
+    }
+
+    if (source && typeof source === 'object') {
+      const meta = { ...source };
+      const value =
+        meta.value ??
+        meta.id ??
+        meta.code ??
+        meta.category ??
+        meta.name ??
+        meta.label;
+      const label = meta.label ?? meta.name ?? meta.title ?? null;
+      const confidence = clampConfidence(
+        meta.confidence ?? meta.score ?? meta.probability ?? baseConfidence
+      );
+      delete meta.value;
+      delete meta.id;
+      delete meta.code;
+      delete meta.category;
+      delete meta.name;
+      delete meta.label;
+      delete meta.title;
+      delete meta.confidence;
+      delete meta.score;
+      delete meta.probability;
+      const category = createCategory(value, {
+        label,
+        confidence,
+        risk_level: meta.risk_level || riskLevel || null,
+        recommended_disposal: meta.recommended_disposal || recommendedDisposal || null,
+        handling_method: meta.handling_method || handlingMethod || null,
+        remarks: meta.remarks || meta.remark || disposalRemarks || null,
+        all_probabilities: meta.all_probabilities || probabilities || null,
+        extra: meta
+      });
+      if (category) {
+        return category;
+      }
+    }
+
+    return createCategory(source, {
+      label: typeof safety.category_name === 'string' ? safety.category_name.trim() : null,
+      confidence: baseConfidence,
+      risk_level: riskLevel || null,
+      recommended_disposal: recommendedDisposal || null,
+      handling_method: handlingMethod || null,
+      remarks: disposalRemarks || null,
+      all_probabilities: probabilities || null
+    });
+  };
+
+  const methodOfDisposal = normalizePredictionList(
+    basePredictions.method_of_disposal ??
+      basePredictions.disposal_methods ??
+      raw.method_of_disposal ??
+      raw.disposal_methods,
+    {
+      defaultConfidence: baseConfidence,
+      splitText: true,
+      fillConfidence: true
+    }
+  );
+  if (!methodOfDisposal.length && recommendedDisposal) {
+    methodOfDisposal.push({
+      value: recommendedDisposal,
+      label: recommendedDisposal,
+      confidence: baseConfidence ?? null,
+      source: 'guidance'
+    });
+  }
+
+  const dosageForm = normalizePredictionList(
+    basePredictions.dosage_form ??
+      basePredictions.dosage_forms ??
+      basePredictions.dosageForm ??
+      raw.dosage_form ??
+      raw.dosage_forms,
+    {
+      splitText: true
+    }
+  );
+  const fallbackDosage = pickText(
+    metadata.dosage_form,
+    raw.medicine_info && raw.medicine_info.dosage_form
+  );
+  if (!dosageForm.length && fallbackDosage) {
+    dosageForm.push({
+      value: fallbackDosage,
+      label: fallbackDosage
+    });
+  }
+
+  const manufacturer = normalizePredictionList(
+    basePredictions.manufacturer ??
+      basePredictions.manufacturers ??
+      raw.manufacturer ??
+      raw.manufacturers,
+    {
+      splitText: true
+    }
+  );
+  const fallbackManufacturer = pickText(
+    metadata.manufacturer,
+    raw.medicine_info && raw.medicine_info.manufacturer,
+    raw.medicine_info && raw.medicine_info.brand_name
+  );
+  if (!manufacturer.length && fallbackManufacturer) {
+    manufacturer.push({
+      value: fallbackManufacturer,
+      label: fallbackManufacturer
+    });
+  }
+
+  const similarGenericName = pickText(
+    basePredictions.similar_generic_name,
+    basePredictions.closest_generic_name,
+    metadata.similar_generic_name,
+    raw.similar_generic_name
+  );
+  const similarityDistance = toNumber(
+    basePredictions.similarity_distance,
+    basePredictions.distance,
+    metadata.similarity_distance,
+    raw.similarity_distance
+  );
+  const inputGenericName = pickText(
+    basePredictions.input_generic_name,
+    raw.input_generic_name,
+    raw.medicine_name,
+    raw.medicine_info && raw.medicine_info.generic_name,
+    metadata.input_generic_name
+  );
+  const brandName = pickText(
+    basePredictions.input_brand_name,
+    raw.input_brand_name,
+    raw.medicine_info && raw.medicine_info.brand_name,
+    metadata.input_brand_name
+  );
+
+  const predictionsData = {
+    disposal_category: buildDisposalCategory(),
+    method_of_disposal: methodOfDisposal,
+    dosage_form: dosageForm,
+    manufacturer,
+    handling_method: handlingMethod || null,
+    disposal_remarks: disposalRemarks || null,
+    risk_level: riskLevel || null,
+    similar_generic_name: similarGenericName || null,
+    similarity_distance: similarityDistance,
+    input_generic_name: inputGenericName || null,
+    input_brand_name: brandName || null,
+    all_probabilities: probabilities
+  };
+
+  const sanitizeString = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = value.toString().trim();
+    return str ? str : null;
+  };
+
+  predictionsData.handling_method = sanitizeString(predictionsData.handling_method);
+  predictionsData.disposal_remarks = sanitizeString(predictionsData.disposal_remarks);
+  predictionsData.risk_level = sanitizeString(predictionsData.risk_level);
+  predictionsData.similar_generic_name = sanitizeString(predictionsData.similar_generic_name);
+  predictionsData.input_generic_name = sanitizeString(predictionsData.input_generic_name);
+  predictionsData.input_brand_name = sanitizeString(predictionsData.input_brand_name);
+  if (!Array.isArray(predictionsData.method_of_disposal)) predictionsData.method_of_disposal = [];
+  if (!Array.isArray(predictionsData.dosage_form)) predictionsData.dosage_form = [];
+  if (!Array.isArray(predictionsData.manufacturer)) predictionsData.manufacturer = [];
+
+  const analysis = pickText(
+    raw.analysis,
+    raw.analysis_markdown,
+    raw.analysis_text,
+    raw.full_analysis,
+    raw.analysis_md,
+    raw.analysis_html
+  );
+
+  const medicineName = pickText(
+    raw.medicine_name,
+    basePredictions.input_generic_name,
+    raw.medicine_info && raw.medicine_info.generic_name,
+    metadata.medicine_name
+  );
+
+  const inputType = pickText(
+    raw.input_type,
+    raw.inputType,
+    metadata.input_type
+  );
+
+  const ocrPayload =
+    raw.ocr_info ||
+    raw.ocr ||
+    raw.ocr_data ||
+    raw.ocr_output ||
+    null;
+
+  const timestamp =
+    raw.timestamp ||
+    raw.created_at ||
+    raw.createdAt ||
+    metadata.timestamp ||
+    null;
+
+  const messages = collectMessages(raw.messages, raw.message, metadata.messages);
+  const errors = collectMessages(raw.errors, raw.error, raw.detail, metadata.errors);
+
   return {
     success: raw.success !== false,
     data: {
-      medicineName: raw.medicine_name || null,
-      inputType: raw.input_type || null,
-      predictions: raw.predictions || {},
-      analysis: raw.analysis || '',
-      messages: Array.isArray(raw.messages)
-        ? raw.messages
-        : raw.messages
-        ? [raw.messages]
-        : [],
-      errors: Array.isArray(raw.errors)
-        ? raw.errors
-        : raw.errors
-        ? [raw.errors]
-        : [],
+      medicineName: sanitizeString(medicineName),
+      inputType: sanitizeString(inputType),
+      riskLevel: sanitizeString(riskLevel),
+      predictions: predictionsData,
+      analysis: analysis || '',
+      messages,
+      errors,
+      ocr: ocrPayload,
+      timestamp,
       raw
     }
   };

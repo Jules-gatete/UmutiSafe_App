@@ -8,9 +8,22 @@ const DEPRECATED_MODEL_HOSTS = new Set([
 ]);
 
 const rawModelUrl = process.env.VITE_MODEL_API_URL;
-const MODEL_API_URL = (rawModelUrl && !DEPRECATED_MODEL_HOSTS.has(rawModelUrl.trim()))
-  ? rawModelUrl.trim().replace(/\/$/, '')
-  : 'http://localhost:8000';
+
+let MODEL_API_URL = 'http://localhost:8000';
+if (rawModelUrl && typeof rawModelUrl === 'string') {
+  const trimmed = rawModelUrl.trim().replace(/\/$/, '');
+  if (trimmed) {
+    if (DEPRECATED_MODEL_HOSTS.has(trimmed)) {
+      console.warn(`Warning: ${trimmed} is listed as a deprecated model host. Using it anyway because VITE_MODEL_API_URL is set.`);
+    }
+    MODEL_API_URL = trimmed;
+  }
+} else if (process.env.MODEL_API_URL && typeof process.env.MODEL_API_URL === 'string') {
+  const trimmed = process.env.MODEL_API_URL.trim().replace(/\/$/, '');
+  if (trimmed) {
+    MODEL_API_URL = trimmed;
+  }
+}
 
 function mapFastApiResponse(f) {
   return {
@@ -27,25 +40,49 @@ function mapFastApiResponse(f) {
   };
 }
 
-async function postText() {
+async function postText(medicineName = 'Paracetamol') {
   const payload = {
-    genericName: 'Paracetamol',
-    brandName: 'Panadol',
-    dosageForm: 'Tablet',
-    packagingType: 'Box'
+    medicine_name: medicineName,
+    output_format: 'full'
   };
   try {
-    console.log('Posting to', `${MODEL_API_URL}/api/predict/text`);
-    const resp = await axios.post(`${MODEL_API_URL}/api/predict/text`, payload, { timeout: 20000 });
-    const raw = resp.data;
+    const endpoints = ['/predict/text', '/api/predict/text'];
+    let response;
+    let lastError;
+
+    for (const pathSuffix of endpoints) {
+      const url = `${MODEL_API_URL}${pathSuffix.startsWith('/') ? '' : '/'}${pathSuffix}`;
+      console.log('Posting to', url);
+      try {
+        response = await axios.post(url, payload, { timeout: 20000 });
+        break;
+      } catch (err) {
+        lastError = err;
+        if (err?.response?.status === 404 || err?.response?.status === 405) {
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('Prediction request failed');
+    }
+
+    const raw = response.data;
     fs.writeFileSync(path.join('tools', 'text_raw.json'), JSON.stringify(raw, null, 2));
     const mapped = mapFastApiResponse(raw);
     fs.writeFileSync(path.join('tools', 'text_mapped.json'), JSON.stringify(mapped, null, 2));
-    console.log('Text response saved to tools/text_raw.json and tools/text_mapped.json');
+    console.log(`Text response saved to tools/text_raw.json and tools/text_mapped.json for ${medicineName}`);
   } catch (err) {
     console.error('Text request failed:', err.message || err);
     if (err.response) {
-      try { fs.writeFileSync(path.join('tools','text_raw_error.json'), JSON.stringify(err.response.data, null,2)); } catch(e){}
+      try {
+        fs.writeFileSync(path.join('tools', 'text_raw_error.json'), JSON.stringify(err.response.data, null, 2));
+        console.error('Saved error payload to tools/text_raw_error.json');
+      } catch (e) {
+        console.error('Failed to write error payload:', e.message);
+      }
     }
   }
 }
@@ -80,9 +117,30 @@ async function postImage() {
       form.append('file', stream);
       if (typeof form.getHeaders === 'function') headers = form.getHeaders();
 
-      console.log('Posting image to', `${MODEL_API_URL}/api/predict/image`);
-      const resp = await axios.post(`${MODEL_API_URL}/api/predict/image`, form, { headers, maxBodyLength: Infinity, timeout: 60000 });
-      const raw = resp.data;
+      const endpoints = ['/predict/image', '/api/predict/image'];
+      let response;
+      let lastError;
+
+      for (const pathSuffix of endpoints) {
+        const url = `${MODEL_API_URL}${pathSuffix.startsWith('/') ? '' : '/'}${pathSuffix}`;
+        console.log('Posting image to', url);
+        try {
+          response = await axios.post(url, form, { headers, maxBodyLength: Infinity, timeout: 60000 });
+          break;
+        } catch (err) {
+          lastError = err;
+          if (err?.response?.status === 404 || err?.response?.status === 405) {
+            continue;
+          }
+          break;
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error('Image prediction request failed');
+      }
+
+      const raw = response.data;
       fs.writeFileSync(path.join('tools', 'image_raw.json'), JSON.stringify(raw, null, 2));
       const mapped = mapFastApiResponse(raw);
       fs.writeFileSync(path.join('tools', 'image_mapped.json'), JSON.stringify(mapped, null, 2));
@@ -93,12 +151,18 @@ async function postImage() {
   } catch (err) {
     console.error('Image request failed:', err.message || err);
     if (err.response) {
-      try { fs.writeFileSync(path.join('tools','image_raw_error.json'), JSON.stringify(err.response.data, null,2)); } catch(e){}
+      try {
+        fs.writeFileSync(path.join('tools', 'image_raw_error.json'), JSON.stringify(err.response.data, null, 2));
+        console.error('Saved error payload to tools/image_raw_error.json');
+      } catch (e) {
+        console.error('Failed to write image error payload:', e.message);
+      }
     }
   }
 }
 
 (async () => {
-  await postText();
+  const medicineArg = process.argv[2];
+  await postText(medicineArg || 'Paracetamol');
   await postImage();
 })();
