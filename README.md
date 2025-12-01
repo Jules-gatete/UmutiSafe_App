@@ -301,7 +301,8 @@ This project is developed for educational and research purposes under ALU guidel
 
 # **Support & Contact**
 
-**Email:** [support@umutisafe.rw](mailto:support@umutisafe.rw)
+**Email:** [support@umutisafe](mailto:j.gatete@alustudent.com)
+
 **Platform:** [https://umuti-safe-app.vercel.app/login](https://umuti-safe-app.vercel.app/login)
 
 ---
