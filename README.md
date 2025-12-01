@@ -285,21 +285,11 @@ Each platform must be configured with the required environment variables.
 
 # **Future Enhancements**
 
+* train on balanced dataset
 * Push notifications for CHW updates
 * Multi-language support (Kinyarwanda, English, French)
 * Offline mode via service workers
 * GPS-based CHW location
-* Barcode scanning
-
----
-
-# **Contributing**
-
-1. Create a feature branch
-2. Commit changes
-3. Open a pull request
-4. Ensure unit tests pass
-5. Follow project code standards
 
 ---
 
@@ -317,4 +307,3 @@ This project is developed for educational and research purposes under ALU guidel
 ---
 
 # **Built with purpose in Rwanda — for safe, ethical, and sustainable medicine disposal.**
-
