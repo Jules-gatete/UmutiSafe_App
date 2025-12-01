@@ -3,157 +3,318 @@
 **UmutiSafe** is an AI-powered web platform that helps households in Rwanda safely dispose of unused or expired medicines while connecting them with **Community Health Workers (CHWs)**.
 It combines **machine learning classification**, **OCR analysis**, and **interactive dashboards** to ensure safe, ethical, and traceable medicine disposal.
 
- **Live Demo (Frontend):** [https://umutisafe.vercel.app](https://umuti-safe-app.vercel.app/login)
- 
- **Backend Deployed API:**[https://umutisafe-backend.onrender.com](https://umutisafe-backend.onrender.com) /
- 
- **Backend Repo:** [https://github.com/Jules-gatete/UmutiSafe_Backend](https://github.com/Jules-gatete/UmutiSafe_Backend)
- 
- **AI Model Repository/Deployed API Link:** [https://github.com/Jules-gatete/FastAPI.git](https://github.com/Jules-gatete/FastAPI.git) / [https://plankton-app-2c2ae.ondigitalocean.app/docs](https://plankton-app-2c2ae.ondigitalocean.app/docs)
 
-##  **Video demo**
-
-🔗 **Video:** [Umutisafe Demo Video](https://youtu.be/-w50fIwAT-g)
-
+*A complete, end-to-end documentation for running, testing, and deploying the entire UmutiSafe system.*
 
 ---
 
-##  **Core Features**
+## **Overview**
 
-###  Household Users
+**The platform integrates:
 
-* Upload or enter medicine details for **AI-based disposal classification**
-* Automatic **risk level assignment (LOW / MEDIUM / HIGH)**
-* Request pickups from nearby **CHWs**
-* Track disposal history and access **educational resources**
+* Machine Learning-based medicine classification
+* OCR-assisted label text extraction
+* Community Health Worker (CHW) pickup coordination
+* User, CHW, and Admin dashboards
+* Secure backend API and database
+* Ethical guidelines aligned with Rwanda FDA and national data laws
 
-###  Community Health Workers (CHWs)
-
-* Manage and schedule **pickup requests**
-* View request statistics and completion history
-* Toggle **availability status** for accepting new requests
-
-###  Admin / FDA
-
-* Centralized **dashboard** with real-time analytics
-* Manage **users, CHWs, and medicine registry**
-* Upload new datasets and **export reports** (CSV, PDF, Excel)
+The solution addresses unsafe household disposal practices and supports Rwanda’s One Health and FDA-approved disposal framework.
 
 ---
 
-##  **Technology Stack**
+## **Live System Links**
 
-| Layer                | Tools / Libraries                              |
-| -------------------- | ---------------------------------------------- |
-| **Frontend**         | React 18 + Vite                                |
-| **Styling**          | TailwindCSS                                    |
-| **Routing**          | React Router v6                                |
-| **Charts**           | Recharts                                       |
-| **Icons**            | Lucide React                                   |
-| **State Management** | Context API                                    |
-| **Theme**            | Light/Dark mode (persistent with localStorage) |
+| Component                       | Link                                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Frontend Application**        | [https://umuti-safe-app.vercel.app/login](https://umuti-safe-app.vercel.app/login)                       |
+| **Backend API (Render)**        | [https://umutisafe-backend.onrender.com](https://umutisafe-backend.onrender.com)                         |
+| **Backend Repository**          | [https://github.com/Jules-gatete/UmutiSafe_Backend](https://github.com/Jules-gatete/UmutiSafe_Backend)   |
+| **AI Model Repository**         | [https://github.com/Jules-gatete/FastAPI.git](https://github.com/Jules-gatete/FastAPI.git)               |
+| **AI Model API (DigitalOcean)** | [https://plankton-app-2c2ae.ondigitalocean.app/docs](https://plankton-app-2c2ae.ondigitalocean.app/docs) |
+| **System landing page**           | [UmutiSafe](https://landing-page-steel-ten-82.vercel.app/#home)                                             |
 
 ---
 
-##  **Local run Quick Start**
+# **System Architecture**
+
+The UmutiSafe platform consists of three coordinated services:
+
+### **1. Frontend (React + Vite)**
+
+User interface for:
+
+* Households (medicine classification and guidance, pickups & education tips)
+* CHWs (pickup management)
+* Admins (system management)
+
+### **2. Backend API (Node.js + Express.js + Supabase/PostgreSQL)**
+
+Responsible for:
+
+* Authentication (JWT)
+* CRUD operations for users, medicines, disposals, CHWs
+* Analytics and reporting
+* Secure database access via Sequelize ORM
+
+### **3. AI Model Server (FastAPI + ML Models)**
+
+Handles:
+
+* OCR text extraction
+* Text embeddings (MiniLM-L6-v2)
+* Classification (Random Forest / XGBoost)
+* Multi-label disposal and handling recommendations
+
+All services communicate through REST APIs.
+
+---
+
+# **Technology Stack**
+
+| Layer      | Tools                                                                |
+| ---------- | -------------------------------------------------------------------- |
+| Frontend   | React 18, Vite, TailwindCSS, Recharts, Lucide Icons, Context API     |
+| Backend    | Node.js, Express.js, Supabase PostgreSQL, Sequelize ORM, JWT, Multer |
+| AI Model   | FastAPI, Sentence-BERT, Random Forest, XGBoost, EasyOCR              |
+| Deployment | Vercel, Render, DigitalOcean                                         |
+| Security   | Helmet, CORS, bcrypt, HTTPS, Input Validation                        |
+
+---
+
+# **How to Run the Entire System Locally**
+
+Below are the complete setup instructions for moderators and developers.
+
+---
+
+# **1. Clone All Repositories**
 
 ```bash
-# 1. Install dependencies
-npm install
+git clone https://github.com/Jules-gatete/UmutiSafe_Backend
+git clone https://github.com/Jules-gatete/UmutiSafe_Frontend
+git clone https://github.com/Jules-gatete/FastAPI.git
+```
 
-# 2. Start development server
+---
+
+# **2. Start the Backend (Node.js + PostgreSQL/Supabase)**
+
+### Install dependencies:
+
+```bash
+cd UmutiSafe_Backend
+npm install
+```
+
+### Configure environment:
+
+```bash
+cp .env.example .env
+```
+
+Update `.env`:
+
+```env
+PORT=5000
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=umutisafe_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+JWT_SECRET=your_jwt_secret
+CORS_ORIGIN=http://localhost:5173
+```
+
+### Start backend:
+
+```bash
 npm run dev
 ```
 
-Build for production:
+Backend runs at:
+
+```
+http://localhost:5000/api
+```
+
+---
+
+# **3. Start the AI Model Server (FastAPI)**
+
+### Setup:
 
 ```bash
-npm run build
-npm run preview
+cd FastAPI
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Start server:
+
+```bash
+uvicorn api:app --host 0.0.0.0 --port 9000
+```
+
+AI Model runs at:
+
+```
+http://localhost:9000/docs
 ```
 
 ---
 
-##  **Simplified Folder Structure**
+# **4. Start the Frontend (React + Vite)**
 
-```
-src/
- ├── components/   # Navbar, Sidebar, Forms, Tables, Modals, etc.
- ├── pages/        # User, CHW, Admin interfaces
- ├── routes/       # Protected + role-based routes
- ├── utils/        # Theme, APIs, helpers
- ├── App.jsx       # Root component
- └── main.jsx      # Entry point
+```bash
+cd UmutiSafe_Frontend
+npm install
+npm run dev
 ```
 
----
+Frontend runs at:
 
-## 🔗 **API Integration**
-
-| Function            | Endpoint                                             |
-| ------------------- | ---------------------------------------------------- |
-| Medicine prediction | `POST /api/predict/text` / `POST /api/predict/image` |
-| Disposal records    | `GET /api/disposals` / `POST /api/disposals`         |
-| CHW pickups         | `GET /api/pickups` / `POST /api/pickups`             |
-| Admin stats         | `GET /api/admin/stats`                               |
-| Reports export      | `POST /api/admin/reports/export`                     |
-
- **AI Models:** Integrated with the [UmutiSafe AI Models API](https://plankton-app-2c2ae.ondigitalocean.app/docs) for OCR extraction and disposal category prediction.
+```
+http://localhost:5173
+```
 
 ---
 
-##  **AI & OCR Integration Overview**
+# **5. Connect All Services**
 
-* **OCR Pipeline:** Extracts text from medicine labels using Vision-OCR on Colab.
-* **AI Classifier:** Categorizes medicines into **five disposal classes** (Recyclable, Hazardous, Expired, Non-returnable, Controlled).
-* **Data Flow:** OCR → JSON output → Classification Model → Risk & Disposal Recommendation.
+Set in frontend `.env`:
 
-This ensures **end-to-end automation** with minimal manual intervention and high confidence scoring.
+```env
+VITE_BACKEND_URL=http://localhost1000/api
+VITE_AI_MODEL_URL=http://localhost:0000
+```
 
----
-
-##  **Security & Ethics**
-
-*  Bias monitoring and explainable AI for fairness
-*  Role-based access control (Admin, CHW, Household)
-*  HTTPS + input validation for data safety
-*  Ethical retention of expired medicine data for traceability
+Restart the frontend after editing.
 
 ---
 
-##  **Future Enhancements**
+# **Testing the Full Workflow**
 
-* Push notifications for CHW pickup updates
-* Real-time CHW location tracking (map integration)
+A complete end-to-end test covers:
+
+1. Uploading a medicine image
+2. OCR text extraction
+3. ML-based disposal classification
+4. Display of guidance + risk level
+5. Requesting CHW pickup
+6. CHW accepting/declining pickup
+7. Admin viewing analytics dashboard
+
+---
+
+# **AI Model Capabilities**
+
+### Inputs:
+
+* Text (generic name)
+* Image (EasyOCR → text → embeddings)
+
+### Outputs:
+
+* Dosage form (top-3)
+* Manufacturer (top-3)
+* Disposal category (single)
+* Method(s) of disposal (multi-label)
+* Handling instructions (retrieved text)
+* Remarks and safety notes
+
+### Components:
+
+* Sentence-BERT MiniLM-L6-v2 embeddings
+* Random Forest classifier
+* XGBoost alternative
+* MultiOutputClassifier
+* Nearest-neighbor similarity search
+* EasyOCR
+
+---
+
+# **Backend API Summary**
+
+| Endpoint Group     | Purpose                     |
+| ------------------ | --------------------------- |
+| `/api/auth/*`      | Authentication & user login |
+| `/api/disposals/*` | Disposal records management |
+| `/api/pickups/*`   | CHW pickup workflows        |
+| `/api/medicines/*` | Medicine registry CRUD      |
+| `/api/chws/*`      | CHW management              |
+| `/api/admin/*`     | Admin analytics & reporting |
+
+---
+
+# **Security Features**
+
+* JWT authentication
+* Secure password hashing with bcrypt
+* Input validation
+* Protected routes by role
+* Helmet middleware
+* CORS control
+* SQL-injection protection
+* OCR images never stored (processed in-memory)
+
+---
+
+# **CHW Workflow**
+
+1. Household requests pickup
+2. CHW receives request in dashboard
+3. CHW accepts or declines
+4. User receives updated status
+5. Pickup completed → record stored
+
+---
+
+# **Deployment Overview**
+
+| Component | Platform     |
+| --------- | ------------ |
+| Frontend  | Vercel       |
+| Backend   | Render       |
+| AI Model  | DigitalOcean |
+
+Each platform must be configured with the required environment variables.
+
+---
+
+# **Future Enhancements**
+
+* Push notifications for CHW updates
 * Multi-language support (Kinyarwanda, English, French)
-* Offline mode with caching and service workers
-* Barcode scanning and appointment scheduling
+* Offline mode via service workers
+* GPS-based CHW location
+* Barcode scanning
 
 ---
 
-##  **Contributing**
+# **Contributing**
 
-To contribute or deploy a production instance:
-
-1. Replace mock APIs with real backend endpoints
-2. Implement authentication (JWT)
-3. Add form validation and unit tests
-4. Set up CI/CD pipeline and monitoring
-
----
-
-##  **License**
-
-This project is for **educational and demonstration purposes** under an open license.
+1. Create a feature branch
+2. Commit changes
+3. Open a pull request
+4. Ensure unit tests pass
+5. Follow project code standards
 
 ---
 
-##  **Support & Contact**
+# **License**
+
+This project is developed for educational and research purposes under ALU guidelines.
+
+---
+
+# **Support & Contact**
 
 **Email:** [support@umutisafe.rw](mailto:support@umutisafe.rw)
-**UmutiSafe Platform:** [UmutiSafe App](https://umuti-safe-app.vercel.app/login)
+**Platform:** [https://umuti-safe-app.vercel.app/login](https://umuti-safe-app.vercel.app/login)
 
 ---
 
-**Built with a courage in Rwanda for safe, ethical, and sustainable medicine disposal.**
+# **Built with purpose in Rwanda — for safe, ethical, and sustainable medicine disposal.**
 
