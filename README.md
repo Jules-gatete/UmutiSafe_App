@@ -168,7 +168,7 @@ http://localhost:9000/docs
 # **4. Start the Frontend (React + Vite)**
 
 ```bash
-cd UmutiSafe_Frontend
+cd UmutiSafe_App
 npm install
 npm run dev
 ```
